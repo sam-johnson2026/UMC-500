@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "umc-twin"
+version = "0.1.0"
+description = "Kinematic digital twin of a Haas UMC-500 5-axis mill: G-code sim, collision checks, web viewer"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "pyyaml>=6", "trimesh>=4"]
+
+[project.optional-dependencies]
+collision = ["python-fcl>=0.7"]
+cad = ["cadquery-ocp>=7.7"]           # only for tools/build_assets.py (re-tessellating the STEP)
+dev = ["pytest>=7", "python-fcl>=0.7"]
+
+[project.scripts]
+umc-twin = "umc_twin.cli:main"
+
+[tool.setuptools]
+packages = ["umc_twin"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

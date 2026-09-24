@@ -1,0 +1,1453 @@
+{
+ "config": {
+  "machine": {
+   "name": "Haas UMC-500SS",
+   "model_file": "cad/UMC-500 + 120 PKT TC_4_2026.STEP"
+  },
+  "cad": {
+   "rotation": [
+    [
+     1,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     -1
+    ],
+    [
+     0,
+     1,
+     0
+    ]
+   ],
+   "pivot": [
+    0.0,
+    0.0,
+    533.4
+   ],
+   "pose": {
+    "X": 0.0,
+    "Y": 0.0,
+    "Z": 0.0,
+    "B": 0.0,
+    "C": 0.0
+   },
+   "tessellation": {
+    "linear_deflection": 0.6,
+    "angular_deflection": 0.35
+   }
+  },
+  "joints": {
+   "X": {
+    "type": "linear",
+    "parent": "base",
+    "axis": [
+     1,
+     0,
+     0
+    ],
+    "limits": [
+     -508.0,
+     0.0
+    ],
+    "max_velocity": 25400.0
+   },
+   "Y": {
+    "type": "linear",
+    "parent": "X",
+    "axis": [
+     0,
+     1,
+     0
+    ],
+    "limits": [
+     -406.4,
+     0.0
+    ],
+    "max_velocity": 25400.0
+   },
+   "Z": {
+    "type": "linear",
+    "parent": "Y",
+    "axis": [
+     0,
+     0,
+     1
+    ],
+    "limits": [
+     -355.6,
+     0.0
+    ],
+    "max_velocity": 25400.0
+   },
+   "B": {
+    "type": "rotary",
+    "parent": "base",
+    "axis": [
+     0,
+     1,
+     0
+    ],
+    "origin": [
+     0,
+     0,
+     0
+    ],
+    "limits": [
+     -35.0,
+     110.0
+    ],
+    "max_velocity": 6000.0
+   },
+   "C": {
+    "type": "rotary",
+    "parent": "B",
+    "axis": [
+     0,
+     0,
+     -1
+    ],
+    "origin": [
+     0,
+     0,
+     0
+    ],
+    "limits": null,
+    "max_velocity": 6000.0
+   }
+  },
+  "max_cutting_feed": 16510.0,
+  "spindle": {
+   "link": "Z",
+   "gauge_point": [
+    252.5,
+    204.7,
+    210.48
+   ],
+   "direction": [
+    0,
+    0,
+    -1
+   ]
+  },
+  "table": {
+   "link": "C",
+   "top_z": -50.8,
+   "radius": 200.0
+  },
+  "tool_change": {
+   "position": {
+    "X": 0.0,
+    "Y": 0.0,
+    "Z": 0.0
+   },
+   "time": 2.8
+  },
+  "parts": [
+   {
+    "id": "base_casting",
+    "step": "UMC 500- Base Casting",
+    "link": "base",
+    "color": "#4b5157"
+   },
+   {
+    "id": "leveling_pads",
+    "step": "umc 500- Leveling Pads",
+    "link": "base",
+    "color": "#2b2d30",
+    "collide": false
+   },
+   {
+    "id": "anchor_pattern",
+    "step": "UMC 500- Anchor Pattern",
+    "link": "base",
+    "color": "#2b2d30",
+    "collide": false,
+    "visible": false
+   },
+   {
+    "id": "trunnion",
+    "step": "UMC 500- Trunnion",
+    "link": "B",
+    "color": "#5d646b"
+   },
+   {
+    "id": "tooling_plate",
+    "step": "UMC 500- Tooling Plate",
+    "link": "B",
+    "color": "#8e959c",
+    "option": {
+     "tooling_plate": "fitted"
+    }
+   },
+   {
+    "id": "platter_tslot",
+    "step": "UMC 500-T Slot Platter",
+    "link": "C",
+    "color": "#a7adb3",
+    "option": {
+     "platter": "t_slot"
+    }
+   },
+   {
+    "id": "platter_blank",
+    "step": "UMC 500- Blank Platter",
+    "link": "C",
+    "color": "#a7adb3",
+    "option": {
+     "platter": "blank"
+    }
+   },
+   {
+    "id": "wips",
+    "step": "UMC 500- WIPS",
+    "link": "base",
+    "color": "#3f5163"
+   },
+   {
+    "id": "x_axis",
+    "step": "UMC 500- X Axis",
+    "link": "X",
+    "color": "#596067"
+   },
+   {
+    "id": "y_axis",
+    "step": "UMC 500- Y Axis",
+    "link": "Y",
+    "color": "#596067"
+   },
+   {
+    "id": "z_axis",
+    "step": "UMC 500- Z Axis",
+    "link": "Z",
+    "color": "#6a7178"
+   },
+   {
+    "id": "spindle_cat40",
+    "step": "UMC 500- 40 Taper Spindle",
+    "link": "Z",
+    "color": "#b7bcc1",
+    "option": {
+     "spindle": "cat40"
+    }
+   },
+   {
+    "id": "spindle_hsk",
+    "step": "UMC 500- HSK Spindle",
+    "link": "Z",
+    "color": "#b7bcc1",
+    "option": {
+     "spindle": "hsk"
+    }
+   },
+   {
+    "id": "auto_window",
+    "step": "UMC 500- Auto Window",
+    "link": "base",
+    "color": "#9fc3d9",
+    "opacity": 0.35,
+    "collide": false
+   },
+   {
+    "id": "control_panel",
+    "step": "UMC 500- Control Panel",
+    "link": "base",
+    "color": "#2f3236",
+    "collide": false
+   },
+   {
+    "id": "conveyor_belt",
+    "step": "UMC 500- Belt Type Conveyor",
+    "link": "base",
+    "color": "#3d4247",
+    "collide": false,
+    "option": {
+     "conveyor": "belt"
+    }
+   },
+   {
+    "id": "conveyor_cdf",
+    "step": "UMC 500- CDF Conveyor",
+    "link": "base",
+    "color": "#3d4247",
+    "collide": false,
+    "option": {
+     "conveyor": "cdf"
+    }
+   },
+   {
+    "id": "conveyor_filter",
+    "step": "UMC 500-Filter Conveyor",
+    "link": "base",
+    "color": "#3d4247",
+    "collide": false,
+    "option": {
+     "conveyor": "filter"
+    }
+   },
+   {
+    "id": "auto_door",
+    "step": "UMC-500-Auto Door",
+    "link": "base",
+    "color": "#d9dbdd",
+    "opacity": 0.5,
+    "collide": false
+   },
+   {
+    "id": "tool_changer",
+    "step": "UMC-500- 120 PKT Tool Changer",
+    "link": "base",
+    "color": "#7d848b",
+    "collide": false
+   },
+   {
+    "id": "tc_arm_up",
+    "step": "UMC-500-  120 pkt Tool Changer Arm Up",
+    "link": "base",
+    "color": "#b7bcc1",
+    "collide": false,
+    "option": {
+     "tc_arm": "up"
+    }
+   },
+   {
+    "id": "tc_arm_down",
+    "step": "UMC-500-  120 pkt Tool Changer Arm Down",
+    "link": "base",
+    "color": "#b7bcc1",
+    "collide": false,
+    "option": {
+     "tc_arm": "down"
+    }
+   },
+   {
+    "id": "tank_55",
+    "step": "UMC 500- 55 gallon tank w lo-rise Handle",
+    "link": "base",
+    "color": "#3d4247",
+    "collide": false,
+    "option": {
+     "coolant_tank": "gal55"
+    }
+   },
+   {
+    "id": "tank_95",
+    "step": "UMC 500- 95 gallon tank w lo-rise Handle",
+    "link": "base",
+    "color": "#3d4247",
+    "collide": false,
+    "option": {
+     "coolant_tank": "gal95"
+    }
+   },
+   {
+    "id": "enclosure",
+    "step": "UMC-500-  120 pkt Standard Enclosure",
+    "link": "base",
+    "color": "#e4e6e8",
+    "opacity": 0.25,
+    "collide": false
+   },
+   {
+    "id": "tc_enclosure",
+    "step": "UMC-500-  120 pkt Tool Changer Enclosure",
+    "link": "base",
+    "color": "#e4e6e8",
+    "opacity": 0.25,
+    "collide": false
+   }
+  ],
+  "options": {
+   "spindle": {
+    "choices": [
+     "cat40",
+     "hsk"
+    ],
+    "default": "cat40"
+   },
+   "platter": {
+    "choices": [
+     "t_slot",
+     "blank"
+    ],
+    "default": "t_slot"
+   },
+   "tooling_plate": {
+    "choices": [
+     "none",
+     "fitted"
+    ],
+    "default": "none"
+   },
+   "conveyor": {
+    "choices": [
+     "none",
+     "belt",
+     "cdf",
+     "filter"
+    ],
+    "default": "none"
+   },
+   "coolant_tank": {
+    "choices": [
+     "none",
+     "gal55",
+     "gal95"
+    ],
+    "default": "gal55"
+   },
+   "tc_arm": {
+    "choices": [
+     "up",
+     "down"
+    ],
+    "default": "up"
+   }
+  },
+  "density": 7200.0
+ },
+ "parts": {
+  "base_casting": {
+   "file": "parts/base_casting.glb",
+   "triangles": 42128,
+   "bbox_mm": [
+    [
+     -828.04,
+     -507.85,
+     -791.3
+    ],
+    [
+     707.96,
+     1387.14,
+     891.82
+    ]
+   ],
+   "volume_l": 621.423,
+   "mass_kg": 4474.25,
+   "com_mm": [
+    3.74,
+    553.0,
+    -326.69
+   ],
+   "inertia_kgm2": [
+    [
+     1422.18822,
+     -9.73487,
+     2.50441
+    ],
+    [
+     -9.73487,
+     1041.31465,
+     -231.62732
+    ],
+    [
+     2.50441,
+     -231.62732,
+     1521.32134
+    ]
+   ]
+  },
+  "leveling_pads": {
+   "file": "parts/leveling_pads.glb",
+   "triangles": 2664,
+   "bbox_mm": [
+    [
+     -663.58,
+     -445.94,
+     -892.81
+    ],
+    [
+     663.57,
+     1083.93,
+     -692.3
+    ]
+   ],
+   "volume_l": 3.024,
+   "mass_kg": 21.77,
+   "com_mm": [
+    -0.0,
+    318.99,
+    -857.0
+   ],
+   "inertia_kgm2": [
+    [
+     7.19683,
+     -0.0,
+     -0.0
+    ],
+    [
+     -0.0,
+     7.89543,
+     -0.0
+    ],
+    [
+     -0.0,
+     -0.0,
+     15.01054
+    ]
+   ]
+  },
+  "anchor_pattern": {
+   "file": "parts/anchor_pattern.glb",
+   "triangles": 2472,
+   "bbox_mm": [
+    [
+     -688.66,
+     -445.62,
+     -895.35
+    ],
+    [
+     688.66,
+     1083.61,
+     -892.81
+    ]
+   ],
+   "volume_l": 0.067,
+   "mass_kg": 0.48,
+   "com_mm": [
+    -4.2,
+    323.32,
+    -894.08
+   ],
+   "inertia_kgm2": [
+    [
+     0.15834,
+     -0.00143,
+     0.0
+    ],
+    [
+     -0.00143,
+     0.17938,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.33772
+    ]
+   ]
+  },
+  "trunnion": {
+   "file": "parts/trunnion.glb",
+   "triangles": 22074,
+   "bbox_mm": [
+    [
+     -230.12,
+     -452.31,
+     -365.89
+    ],
+    [
+     230.12,
+     621.14,
+     230.12
+    ]
+   ],
+   "volume_l": 94.748,
+   "mass_kg": 682.19,
+   "com_mm": [
+    2.07,
+    259.2,
+    -150.08
+   ],
+   "inertia_kgm2": [
+    [
+     56.61752,
+     0.37065,
+     0.14194
+    ],
+    [
+     0.37065,
+     21.19672,
+     -12.85354
+    ],
+    [
+     0.14194,
+     -12.85354,
+     50.77413
+    ]
+   ]
+  },
+  "tooling_plate": {
+   "file": "parts/tooling_plate.glb",
+   "triangles": 8556,
+   "bbox_mm": [
+    [
+     223.52,
+     -206.31,
+     -348.75
+    ],
+    [
+     242.52,
+     193.69,
+     -133.75
+    ]
+   ],
+   "volume_l": 1.559,
+   "mass_kg": 11.23,
+   "com_mm": [
+    233.0,
+    -6.31,
+    -241.43
+   ],
+   "inertia_kgm2": [
+    [
+     0.19445,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.04356,
+     -0.0
+    ],
+    [
+     0.0,
+     -0.0,
+     0.15156
+    ]
+   ]
+  },
+  "platter_tslot": {
+   "file": "parts/platter_tslot.glb",
+   "triangles": 5154,
+   "bbox_mm": [
+    [
+     -200.0,
+     -199.66,
+     -143.5
+    ],
+    [
+     200.0,
+     199.75,
+     -50.79
+    ]
+   ],
+   "volume_l": 9.937,
+   "mass_kg": 71.55,
+   "com_mm": [
+    0.13,
+    0.02,
+    -95.94
+   ],
+   "inertia_kgm2": [
+    [
+     0.75289,
+     0.00086,
+     -0.0003
+    ],
+    [
+     0.00086,
+     0.73001,
+     5e-05
+    ],
+    [
+     -0.0003,
+     5e-05,
+     1.39945
+    ]
+   ]
+  },
+  "platter_blank": {
+   "file": "parts/platter_blank.glb",
+   "triangles": 9478,
+   "bbox_mm": [
+    [
+     -202.9,
+     -203.16,
+     -143.5
+    ],
+    [
+     202.9,
+     203.24,
+     -50.79
+    ]
+   ],
+   "volume_l": 8.241,
+   "mass_kg": 59.34,
+   "com_mm": [
+    0.01,
+    0.26,
+    -86.99
+   ],
+   "inertia_kgm2": [
+    [
+     0.63772,
+     -0.00016,
+     -1e-05
+    ],
+    [
+     -0.00016,
+     0.6393,
+     -0.00024
+    ],
+    [
+     -1e-05,
+     -0.00024,
+     1.21093
+    ]
+   ]
+  },
+  "wips": {
+   "file": "parts/wips.glb",
+   "triangles": 39209,
+   "bbox_mm": [
+    [
+     -444.43,
+     -202.68,
+     -423.02
+    ],
+    [
+     -324.2,
+     -139.24,
+     13.61
+    ]
+   ],
+   "volume_l": 1.282,
+   "mass_kg": 9.23,
+   "com_mm": [
+    -376.87,
+    -170.61,
+    -215.5
+   ],
+   "inertia_kgm2": [
+    [
+     0.13826,
+     0.00013,
+     0.00369
+    ],
+    [
+     0.00013,
+     0.13914,
+     -0.00059
+    ],
+    [
+     0.00369,
+     -0.00059,
+     0.00529
+    ]
+   ]
+  },
+  "x_axis": {
+   "file": "parts/x_axis.glb",
+   "triangles": 2736,
+   "bbox_mm": [
+    [
+     -106.15,
+     501.19,
+     421.93
+    ],
+    [
+     624.34,
+     1111.87,
+     671.46
+    ]
+   ],
+   "volume_l": 44.741,
+   "mass_kg": 322.14,
+   "com_mm": [
+    254.12,
+    804.53,
+    551.22
+   ],
+   "inertia_kgm2": [
+    [
+     13.27746,
+     -0.00767,
+     0.00305
+    ],
+    [
+     -0.00767,
+     9.4857,
+     0.08314
+    ],
+    [
+     0.00305,
+     0.08314,
+     20.56995
+    ]
+   ]
+  },
+  "y_axis": {
+   "file": "parts/y_axis.glb",
+   "triangles": 908,
+   "bbox_mm": [
+    [
+     12.98,
+     16.07,
+     648.9
+    ],
+    [
+     494.83,
+     1514.07,
+     1828.1
+    ]
+   ],
+   "volume_l": 302.378,
+   "mass_kg": 2177.12,
+   "com_mm": [
+    253.98,
+    843.25,
+    1139.17
+   ],
+   "inertia_kgm2": [
+    [
+     379.896,
+     -0.02408,
+     0.02657
+    ],
+    [
+     -0.02408,
+     248.21622,
+     75.23958
+    ],
+    [
+     0.02657,
+     75.23958,
+     185.35862
+    ]
+   ]
+  },
+  "z_axis": {
+   "file": "parts/z_axis.glb",
+   "triangles": 24505,
+   "bbox_mm": [
+    [
+     68.89,
+     17.32,
+     210.19
+    ],
+    [
+     436.06,
+     456.15,
+     1573.18
+    ]
+   ],
+   "volume_l": 161.205,
+   "mass_kg": 1160.67,
+   "com_mm": [
+    252.17,
+    229.17,
+    929.51
+   ],
+   "inertia_kgm2": [
+    [
+     134.71127,
+     -0.06091,
+     -0.34968
+    ],
+    [
+     -0.06091,
+     131.69579,
+     0.37718
+    ],
+    [
+     -0.34968,
+     0.37718,
+     27.6443
+    ]
+   ]
+  },
+  "spindle_cat40": {
+   "file": "parts/spindle_cat40.glb",
+   "triangles": 11828,
+   "bbox_mm": [
+    [
+     166.12,
+     118.63,
+     201.59
+    ],
+    [
+     338.84,
+     290.76,
+     331.6
+    ]
+   ],
+   "volume_l": 1.692,
+   "mass_kg": 12.18,
+   "com_mm": [
+    252.47,
+    204.69,
+    278.25
+   ],
+   "inertia_kgm2": [
+    [
+     0.03139,
+     -0.0,
+     -0.0
+    ],
+    [
+     -0.0,
+     0.03137,
+     0.0
+    ],
+    [
+     -0.0,
+     0.0,
+     0.03201
+    ]
+   ]
+  },
+  "spindle_hsk": {
+   "file": "parts/spindle_hsk.glb",
+   "triangles": 25196,
+   "bbox_mm": [
+    [
+     166.41,
+     118.33,
+     207.38
+    ],
+    [
+     338.54,
+     291.05,
+     331.6
+    ]
+   ],
+   "volume_l": 1.657,
+   "mass_kg": 11.93,
+   "com_mm": [
+    252.5,
+    204.7,
+    278.59
+   ],
+   "inertia_kgm2": [
+    [
+     0.03157,
+     0.0,
+     1e-05
+    ],
+    [
+     0.0,
+     0.03157,
+     0.0
+    ],
+    [
+     1e-05,
+     0.0,
+     0.03217
+    ]
+   ]
+  },
+  "auto_window": {
+   "file": "parts/auto_window.glb",
+   "triangles": 1744,
+   "bbox_mm": [
+    [
+     695.64,
+     -305.02,
+     -119.01
+    ],
+    [
+     808.6,
+     342.68,
+     1724.9
+    ]
+   ],
+   "volume_l": 17.266,
+   "mass_kg": 124.32,
+   "com_mm": [
+    766.92,
+    18.83,
+    1074.26
+   ],
+   "inertia_kgm2": [
+    [
+     25.53714,
+     0.0,
+     -0.96997
+    ],
+    [
+     0.0,
+     24.30093,
+     0.0
+    ],
+    [
+     -0.96997,
+     0.0,
+     1.44908
+    ]
+   ]
+  },
+  "control_panel": {
+   "file": "parts/control_panel.glb",
+   "triangles": 4198,
+   "bbox_mm": [
+    [
+     268.34,
+     -836.39,
+     312.64
+    ],
+    [
+     745.86,
+     -706.78,
+     920.97
+    ]
+   ],
+   "volume_l": 21.082,
+   "mass_kg": 151.79,
+   "com_mm": [
+    507.48,
+    -748.09,
+    578.54
+   ],
+   "inertia_kgm2": [
+    [
+     3.75071,
+     -0.00903,
+     -0.09112
+    ],
+    [
+     -0.00903,
+     6.58975,
+     -0.01529
+    ],
+    [
+     -0.09112,
+     -0.01529,
+     3.01327
+    ]
+   ]
+  },
+  "conveyor_belt": {
+   "file": "parts/conveyor_belt.glb",
+   "triangles": 2824,
+   "bbox_mm": [
+    [
+     -1875.24,
+     -158.88,
+     -619.61
+    ],
+    [
+     511.89,
+     206.88,
+     620.09
+    ]
+   ],
+   "volume_l": 142.322,
+   "mass_kg": 1024.72,
+   "com_mm": [
+    -966.53,
+    14.03,
+    -123.87
+   ],
+   "inertia_kgm2": [
+    [
+     192.4414,
+     0.95767,
+     242.89148
+    ],
+    [
+     0.95767,
+     622.56912,
+     -0.84449
+    ],
+    [
+     242.89148,
+     -0.84449,
+     446.00026
+    ]
+   ]
+  },
+  "conveyor_cdf": {
+   "file": "parts/conveyor_cdf.glb",
+   "triangles": 20340,
+   "bbox_mm": [
+    [
+     -2595.04,
+     -393.89,
+     -892.81
+    ],
+    [
+     513.28,
+     287.11,
+     691.74
+    ]
+   ],
+   "volume_l": 326.147,
+   "mass_kg": 2348.26,
+   "com_mm": [
+    -1538.65,
+    0.29,
+    -121.0
+   ],
+   "inertia_kgm2": [
+    [
+     517.97693,
+     -44.80218,
+     608.16621
+    ],
+    [
+     -44.80218,
+     1809.86304,
+     41.134
+    ],
+    [
+     608.16621,
+     41.134,
+     1365.82285
+    ]
+   ]
+  },
+  "conveyor_filter": {
+   "file": "parts/conveyor_filter.glb",
+   "triangles": 2116,
+   "bbox_mm": [
+    [
+     -1937.85,
+     -188.03,
+     -619.61
+    ],
+    [
+     510.34,
+     369.47,
+     522.27
+    ]
+   ],
+   "volume_l": 150.518,
+   "mass_kg": 1083.73,
+   "com_mm": [
+    -989.25,
+    22.32,
+    -146.25
+   ],
+   "inertia_kgm2": [
+    [
+     179.41337,
+     9.35671,
+     254.15448
+    ],
+    [
+     9.35671,
+     674.61215,
+     -6.35228
+    ],
+    [
+     254.15448,
+     -6.35228,
+     517.90288
+    ]
+   ]
+  },
+  "auto_door": {
+   "file": "parts/auto_door.glb",
+   "triangles": 2400,
+   "bbox_mm": [
+    [
+     -562.94,
+     -640.64,
+     -209.18
+    ],
+    [
+     265.1,
+     -533.55,
+     1129.43
+    ]
+   ],
+   "volume_l": 20.638,
+   "mass_kg": 148.6,
+   "com_mm": [
+    -146.1,
+    -549.35,
+    440.31
+   ],
+   "inertia_kgm2": [
+    [
+     27.24165,
+     0.04418,
+     0.13044
+    ],
+    [
+     0.04418,
+     38.02838,
+     -0.02577
+    ],
+    [
+     0.13044,
+     -0.02577,
+     10.82437
+    ]
+   ]
+  },
+  "tool_changer": {
+   "file": "parts/tool_changer.glb",
+   "triangles": 74835,
+   "bbox_mm": [
+    [
+     -1030.95,
+     -459.46,
+     -683.41
+    ],
+    [
+     -550.52,
+     1990.71,
+     1728.09
+    ]
+   ],
+   "volume_l": 287.207,
+   "mass_kg": 2067.89,
+   "com_mm": [
+    -862.96,
+    587.78,
+    691.31
+   ],
+   "inertia_kgm2": [
+    [
+     1432.00461,
+     -17.75396,
+     73.18128
+    ],
+    [
+     -17.75396,
+     745.42575,
+     256.95596
+    ],
+    [
+     73.18128,
+     256.95596,
+     735.88242
+    ]
+   ]
+  },
+  "tc_arm_up": {
+   "file": "parts/tc_arm_up.glb",
+   "triangles": 18512,
+   "bbox_mm": [
+    [
+     -663.55,
+     -187.13,
+     373.0
+    ],
+    [
+     -558.15,
+     433.23,
+     921.63
+    ]
+   ],
+   "volume_l": 2.047,
+   "mass_kg": 14.74,
+   "com_mm": [
+    -610.82,
+    123.13,
+    541.9
+   ],
+   "inertia_kgm2": [
+    [
+     0.53853,
+     0.00152,
+     4e-05
+    ],
+    [
+     0.00152,
+     0.40855,
+     0.00015
+    ],
+    [
+     4e-05,
+     0.00015,
+     0.14176
+    ]
+   ]
+  },
+  "tc_arm_down": {
+   "file": "parts/tc_arm_down.glb",
+   "triangles": 18512,
+   "bbox_mm": [
+    [
+     -663.55,
+     -187.13,
+     261.24
+    ],
+    [
+     -558.15,
+     433.23,
+     809.87
+    ]
+   ],
+   "volume_l": 2.047,
+   "mass_kg": 14.74,
+   "com_mm": [
+    -610.82,
+    123.13,
+    430.14
+   ],
+   "inertia_kgm2": [
+    [
+     0.53853,
+     0.00152,
+     4e-05
+    ],
+    [
+     0.00152,
+     0.40855,
+     0.00015
+    ],
+    [
+     4e-05,
+     0.00015,
+     0.14176
+    ]
+   ]
+  },
+  "tank_55": {
+   "file": "parts/tank_55.glb",
+   "triangles": 24766,
+   "bbox_mm": [
+    [
+     -1389.6,
+     -325.52,
+     -892.81
+    ],
+    [
+     -661.75,
+     1724.38,
+     -404.33
+    ]
+   ],
+   "volume_l": 202.972,
+   "mass_kg": 1461.4,
+   "com_mm": [
+    -1008.77,
+    695.69,
+    -799.55
+   ],
+   "inertia_kgm2": [
+    [
+     398.53622,
+     -8.14676,
+     -2.07502
+    ],
+    [
+     -8.14676,
+     66.13003,
+     -7.86961
+    ],
+    [
+     -2.07502,
+     -7.86961,
+     453.38541
+    ]
+   ]
+  },
+  "tank_95": {
+   "file": "parts/tank_95.glb",
+   "triangles": 8888,
+   "bbox_mm": [
+    [
+     -1863.03,
+     -332.01,
+     -898.01
+    ],
+    [
+     -660.55,
+     1721.72,
+     -406.99
+    ]
+   ],
+   "volume_l": 450.391,
+   "mass_kg": 3242.82,
+   "com_mm": [
+    -1266.65,
+    671.58,
+    -786.61
+   ],
+   "inertia_kgm2": [
+    [
+     933.30369,
+     6.63777,
+     1.6892
+    ],
+    [
+     6.63777,
+     392.26096,
+     -6.29429
+    ],
+    [
+     1.6892,
+     -6.29429,
+     1299.67477
+    ]
+   ]
+  },
+  "enclosure": {
+   "file": "parts/enclosure.glb",
+   "triangles": 6784,
+   "bbox_mm": [
+    [
+     -1247.46,
+     -922.17,
+     -682.95
+    ],
+    [
+     1343.7,
+     1883.4,
+     1853.88
+    ]
+   ],
+   "volume_l": 859.622,
+   "mass_kg": 6189.28,
+   "com_mm": [
+    545.2,
+    626.95,
+    406.06
+   ],
+   "inertia_kgm2": [
+    [
+     6330.95981,
+     -834.20878,
+     402.119
+    ],
+    [
+     -834.20878,
+     4585.01248,
+     666.84256
+    ],
+    [
+     402.119,
+     666.84256,
+     5722.39696
+    ]
+   ]
+  },
+  "tc_enclosure": {
+   "file": "parts/tc_enclosure.glb",
+   "triangles": 368,
+   "bbox_mm": [
+    [
+     -1366.51,
+     -587.9,
+     -676.94
+    ],
+    [
+     -732.45,
+     2094.7,
+     1459.39
+    ]
+   ],
+   "volume_l": 185.599,
+   "mass_kg": 1336.31,
+   "com_mm": [
+    -1156.87,
+    835.99,
+    388.02
+   ],
+   "inertia_kgm2": [
+    [
+     1623.65682,
+     -27.23184,
+     26.51846
+    ],
+    [
+     -27.23184,
+     477.09117,
+     125.17276
+    ],
+    [
+     26.51846,
+     125.17276,
+     1263.82094
+    ]
+   ]
+  }
+ }
+}

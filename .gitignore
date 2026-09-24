@@ -1,0 +1,12 @@
+# Raw Haas CAD (large; re-extract from the Haas zip with tools/build_assets.py --zip ...)
+cad/
+*.STEP
+*.step
+*.x_t
+
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
+node_modules/
+*.traj.json

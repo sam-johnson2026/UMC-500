@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UMC-500 Twin</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect x=%224%22 y=%221%22 width=%228%22 height=%229%22 rx=%221%22 fill=%22%235f6873%22/%3E%3Crect x=%227%22 y=%2210%22 width=%222%22 height=%225%22 fill=%22%232563eb%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }
+</script>
+</head>
+<body>
+<main id="app">
+  <section id="view">
+    <canvas id="scene"></canvas>
+    <div id="loading">Loading machine model… <span id="load-count"></span></div>
+    <div id="hud">
+      <div id="hud-mode">MANUAL</div>
+      <div id="hud-line"></div>
+    </div>
+    <div id="cams">
+      <button data-cam="iso" title="Isometric">Iso</button>
+      <button data-cam="front" title="Front (operator side)">Front</button>
+      <button data-cam="right" title="Right side">Right</button>
+      <button data-cam="top" title="Top">Top</button>
+      <button data-cam="table" title="Close-up on the table">Table</button>
+    </div>
+  </section>
+
+  <aside id="panel">
+    <header>
+      <h1>UMC-500 Twin</h1>
+      <span id="server-status" class="pill">static</span>
+    </header>
+
+    <section class="card" id="dro">
+      <h2>Machine position</h2>
+      <table>
+        <tbody id="dro-body"></tbody>
+      </table>
+      <div class="sub" id="tip-readout"></div>
+      <div class="sub" id="tool-readout"></div>
+    </section>
+
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="jog" class="active">Jog</button>
+      <button role="tab" data-tab="program">Program</button>
+      <button role="tab" data-tab="live">Live</button>
+      <button role="tab" data-tab="machine">Machine</button>
+    </nav>
+
+    <section class="tab card" id="tab-jog">
+      <div id="jog-sliders"></div>
+      <label class="row">Tool length <input type="number" id="jog-tool" value="100" step="1" min="0"> mm</label>
+      <div class="row">
+        <button id="btn-home">Home all</button>
+        <button id="btn-center">Table centre</button>
+      </div>
+      <p class="hint">Machine coordinates, like the Haas MACHINE position page. Limits come from <code>config/umc500.yaml</code>.</p>
+    </section>
+
+    <section class="tab card hidden" id="tab-program">
+      <div class="row">
+        <button id="btn-demo">Load demo</button>
+        <button id="btn-crash">Crash demo</button>
+        <label class="file">Open .nc<input type="file" id="file-nc" accept=".nc,.ngc,.tap,.txt,.gcode"></label>
+        <label class="file">Open result .json<input type="file" id="file-json" accept=".json"></label>
+      </div>
+      <details>
+        <summary>G-code</summary>
+        <textarea id="gcode" spellcheck="false" placeholder="Paste or open a program, then Simulate"></textarea>
+      </details>
+      <details>
+        <summary>Job setup (tools, work offsets, stock)</summary>
+        <textarea id="setup" spellcheck="false"></textarea>
+      </details>
+      <div class="row">
+        <button id="btn-sim" class="primary">Simulate</button>
+        <label class="row-inline"><input type="checkbox" id="chk-collide" checked> collision check</label>
+      </div>
+      <div id="sim-status" class="sub"></div>
+
+      <div id="player" class="hidden">
+        <div class="row">
+          <button id="btn-play" class="primary" aria-label="Play">▶</button>
+          <select id="speed" aria-label="Playback speed">
+            <option value="0.25">¼×</option><option value="1" selected>1×</option><option value="4">4×</option>
+            <option value="16">16×</option><option value="64">64×</option>
+          </select>
+          <span id="time" class="mono"></span>
+        </div>
+        <input type="range" id="scrub" min="0" max="1000" value="0" step="1" aria-label="Timeline">
+        <div id="summary" class="sub"></div>
+        <h3>Issues</h3>
+        <ul id="issues"></ul>
+        <h3>Program</h3>
+        <pre id="listing" class="mono"></pre>
+      </div>
+    </section>
+
+    <section class="tab card hidden" id="tab-live">
+      <p>Poses the model from the server's live source (<code>/api/live</code>). Today that is a replay of a
+        simulated program: start the server with <code>--replay program.nc</code>. Real machine data plugs in
+        at the same place (see <code>umc_twin/live.py</code>).</p>
+      <div class="row">
+        <button id="btn-live" class="primary">Connect</button>
+        <span id="live-status" class="sub">disconnected</span>
+      </div>
+    </section>
+
+    <section class="tab card hidden" id="tab-machine">
+      <h3>Options</h3>
+      <p class="hint">The Haas model includes every variant. Pick yours; defaults are the most common build.</p>
+      <div id="options"></div>
+      <h3>View</h3>
+      <label class="row-inline"><input type="checkbox" id="chk-guarding"> show enclosure, doors and pendant</label>
+      <label class="row-inline"><input type="checkbox" id="chk-path" checked> show toolpath</label>
+      <label class="row-inline"><input type="checkbox" id="chk-floor" checked> show floor grid</label>
+    </section>
+  </aside>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>

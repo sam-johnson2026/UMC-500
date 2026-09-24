@@ -1,0 +1,139 @@
+# Haas UMC-500SS with 120-pocket side-mount tool changer -- machine definition.
+#
+# Everything in the sim (Python core and web viewer) is driven from this file.
+#
+# Frames and units
+#   world  = machine frame: Z up, +X to the right, +Y toward the back of the machine, mm and degrees.
+#            Origin is the intersection of the B (tilt) and C (rotary) axes -- the "pivot".
+#   joints = Haas machine coordinates (what the control shows as MACHINE position).
+#            X/Y/Z are 0 at home and travel negative, like on the machine.
+#
+# Values marked VERIFY come from spec sheets or were inferred from the CAD. They should be
+# checked against the real machine (settings / parameters / a tape measure) before trusting
+# the sim for anything that could crash the machine.
+
+machine:
+  name: Haas UMC-500SS
+  model_file: cad/UMC-500 + 120 PKT TC_4_2026.STEP
+
+cad:
+  # The Haas STEP is Y-up, in inches (OpenCascade converts to mm on import).
+  # world = R * (cad - pivot), with R mapping cad x -> X, cad y -> Z, cad z -> -Y.
+  rotation: [[1, 0, 0], [0, 0, -1], [0, 1, 0]]
+  # B axis = cad z-line through (x=0, y=0); C axis = cad y-line through (x=0, z=533.4).
+  # Both found from the cylindrical bearing / cradle faces in the model.
+  pivot: [0.0, 0.0, 533.4]
+  # Joint values the CAD model is drawn at. X/Y match home (spindle at +X/+Y travel limit,
+  # table centred in travel). Z = 0 is an assumption -- VERIFY: at Z home, B0, measure spindle
+  # nose to platter top. The model gives 261.3 mm (10.29 in); adjust Z here if yours differs.
+  pose: {X: 0.0, Y: 0.0, Z: 0.0, B: 0.0, C: 0.0}
+  tessellation:
+    linear_deflection: 0.6   # mm
+    angular_deflection: 0.35 # rad
+
+# Kinematic chain. Links are named after the joint that moves them; "base" is fixed.
+# rotary joints turn their link about `axis` through `origin` (world, at cad.pose), right-handed.
+#
+# B sign: +B tilts the platter face toward +X (the spindle's home side). Evidence: with the
+#   opposite sign, tilting to B > +95 at home drives the cradle into the spindle nose even with
+#   no tool loaded; with this sign the full -35..+110 range is clear at home.
+#   VERIFY on the machine: at home, jog B+ -- the platter face should turn toward the right.
+# C sign: unverified. ISO convention (table turns clockwise seen from above for +C).
+#   VERIFY: jog C+ and look down at the platter.
+joints:
+  X:
+    type: linear
+    parent: base
+    axis: [1, 0, 0]
+    limits: [-508.0, 0.0]          # 20 in travel
+    max_velocity: 25400.0          # mm/min rapid (1000 ipm) -- VERIFY
+  Y:
+    type: linear
+    parent: X
+    axis: [0, 1, 0]
+    limits: [-406.4, 0.0]          # 16 in travel
+    max_velocity: 25400.0
+  Z:
+    type: linear
+    parent: Y
+    axis: [0, 0, 1]
+    limits: [-355.6, 0.0]          # 14 in travel
+    max_velocity: 25400.0
+  B:
+    type: rotary
+    parent: base
+    axis: [0, 1, 0]
+    origin: [0, 0, 0]
+    limits: [-35.0, 110.0]
+    max_velocity: 6000.0           # deg/min -- placeholder, VERIFY from parameters
+  C:
+    type: rotary
+    parent: B
+    axis: [0, 0, -1]
+    origin: [0, 0, 0]
+    limits: null                   # continuous
+    max_velocity: 6000.0           # deg/min -- placeholder, VERIFY
+
+max_cutting_feed: 16510.0          # mm/min (650 ipm) -- VERIFY
+
+spindle:
+  link: Z
+  # Spindle nose (gauge line) centre at cad.pose, world frame.
+  # Tool lengths (H offsets) are measured from this point.
+  gauge_point: [252.5, 204.7, 210.48]
+  direction: [0, 0, -1]            # tool points down
+
+table:
+  link: C
+  top_z: -50.8                     # platter top at B0 (2.000 in below the B axis)
+  radius: 200.0
+
+tool_change:
+  # VERIFY: position the control moves to for M6 (SMTC) and chip-to-chip time.
+  position: {X: 0.0, Y: 0.0, Z: 0.0}
+  time: 2.8                        # s
+
+# Geometry. `step` is the part name in the Haas STEP file; `link` is what moves it.
+# `option` ties a part to a selectable machine option (see `options` below).
+# `collide: false` keeps a part out of collision checks (cosmetic / far away).
+parts:
+  - {id: base_casting,        step: "UMC 500- Base Casting",              link: base, color: "#4b5157"}
+  - {id: leveling_pads,       step: "umc 500- Leveling Pads",             link: base, color: "#2b2d30", collide: false}
+  - {id: anchor_pattern,      step: "UMC 500- Anchor Pattern",            link: base, color: "#2b2d30", collide: false, visible: false}
+  - {id: trunnion,            step: "UMC 500- Trunnion",                  link: B,    color: "#5d646b"}
+  - {id: tooling_plate,       step: "UMC 500- Tooling Plate",             link: B,    color: "#8e959c", option: {tooling_plate: fitted}}
+  - {id: platter_tslot,       step: "UMC 500-T Slot Platter",             link: C,    color: "#a7adb3", option: {platter: t_slot}}
+  - {id: platter_blank,       step: "UMC 500- Blank Platter",             link: C,    color: "#a7adb3", option: {platter: blank}}
+  - {id: wips,                step: "UMC 500- WIPS",                      link: base, color: "#3f5163"}
+  - {id: x_axis,              step: "UMC 500- X Axis",                    link: X,    color: "#596067"}
+  - {id: y_axis,              step: "UMC 500- Y Axis",                    link: Y,    color: "#596067"}
+  - {id: z_axis,              step: "UMC 500- Z Axis",                    link: Z,    color: "#6a7178"}
+  - {id: spindle_cat40,       step: "UMC 500- 40 Taper Spindle",          link: Z,    color: "#b7bcc1", option: {spindle: cat40}}
+  - {id: spindle_hsk,         step: "UMC 500- HSK Spindle",               link: Z,    color: "#b7bcc1", option: {spindle: hsk}}
+  - {id: auto_window,         step: "UMC 500- Auto Window",               link: base, color: "#9fc3d9", opacity: 0.35, collide: false}
+  - {id: control_panel,       step: "UMC 500- Control Panel",             link: base, color: "#2f3236", collide: false}
+  - {id: conveyor_belt,       step: "UMC 500- Belt Type Conveyor",        link: base, color: "#3d4247", collide: false, option: {conveyor: belt}}
+  - {id: conveyor_cdf,        step: "UMC 500- CDF Conveyor",              link: base, color: "#3d4247", collide: false, option: {conveyor: cdf}}
+  - {id: conveyor_filter,     step: "UMC 500-Filter Conveyor",            link: base, color: "#3d4247", collide: false, option: {conveyor: filter}}
+  - {id: auto_door,           step: "UMC-500-Auto Door",                  link: base, color: "#d9dbdd", opacity: 0.5, collide: false}
+  - {id: tool_changer,        step: "UMC-500- 120 PKT Tool Changer",      link: base, color: "#7d848b", collide: false}
+  - {id: tc_arm_up,           step: "UMC-500-  120 pkt Tool Changer Arm Up",   link: base, color: "#b7bcc1", collide: false, option: {tc_arm: up}}
+  - {id: tc_arm_down,         step: "UMC-500-  120 pkt Tool Changer Arm Down", link: base, color: "#b7bcc1", collide: false, option: {tc_arm: down}}
+  - {id: tank_55,             step: "UMC 500- 55 gallon tank w lo-rise Handle", link: base, color: "#3d4247", collide: false, option: {coolant_tank: gal55}}
+  - {id: tank_95,             step: "UMC 500- 95 gallon tank w lo-rise Handle", link: base, color: "#3d4247", collide: false, option: {coolant_tank: gal95}}
+  - {id: enclosure,           step: "UMC-500-  120 pkt Standard Enclosure",    link: base, color: "#e4e6e8", opacity: 0.25, collide: false}
+  - {id: tc_enclosure,        step: "UMC-500-  120 pkt Tool Changer Enclosure", link: base, color: "#e4e6e8", opacity: 0.25, collide: false}
+
+# Selectable options. The Haas model overlays every variant; pick yours here.
+# Not sure yet? The defaults are the most common build -- change them when you know.
+options:
+  spindle:       {choices: [cat40, hsk], default: cat40}
+  platter:       {choices: [t_slot, blank], default: t_slot}
+  tooling_plate: {choices: [none, fitted], default: none}
+  conveyor:      {choices: [none, belt, cdf, filter], default: none}
+  coolant_tank:  {choices: [none, gal55, gal95], default: gal55}
+  tc_arm:        {choices: [up, down], default: up}
+
+# Approximate density used for the mass properties exported with the meshes (kg/m^3).
+# Uniform cast iron -- good enough to seed a later dynamics model, not for real numbers.
+density: 7200.0

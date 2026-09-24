@@ -1,0 +1,21 @@
+# Job setup for examples/demo_5axis.nc
+units: mm
+
+# Tool table. length = gauge line to tip (what the H offset holds). Holder = simple cylinder
+# used for collision checks, so give a realistic diameter / stick-out.
+tools:
+  1: {name: "50 mm face mill",      length: 110.0, diameter: 50.0, holder_diameter: 63.0, holder_length: 55.0}
+  2: {name: "10 mm endmill",        length: 90.0,  diameter: 10.0, flute_length: 25.0, holder_diameter: 32.0, holder_length: 50.0}
+  3: {name: "6.8 mm drill",         length: 120.0, diameter: 6.8,  holder_diameter: 25.0, holder_length: 55.0}
+  4: {name: "12 mm 90deg chamfer",  length: 95.0,  diameter: 12.0, holder_diameter: 32.0, holder_length: 50.0}
+
+# Part zero. table_point is in the table frame (origin = B/C pivot, platter top at Z -50.8).
+# Stock (100 dia x 50) sits on a 60 tall riser: bottom at 9.2, top face at 59.2.
+# The riser lifts the part clear of the platter for the tilted operations.
+work_offsets:
+  G54: {table_point: [0, 0, 59.2]}
+
+stock: {type: cylinder, size: [100, 50], position: [0, 0, 9.2]}
+
+fixtures:
+  - {name: riser, type: cylinder, size: [80, 60], position: [0, 0, -50.8]}
