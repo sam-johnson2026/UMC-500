@@ -207,6 +207,44 @@ def cmd_tools(args):
     return 0
 
 
+def _simulate_with_load(args):
+    """Trajectory + predicted spindle load (when the setup has a stock) for a program."""
+    from .gcode import simulate
+
+    machine, kin, setup = _machine_and_setup(args)
+    traj = simulate(Path(args.program).read_text(), kin, setup, search_paths=[Path(args.program).resolve().parent])
+    load = None
+    if setup.stock is not None:
+        from .material import simulate_material
+        from .physics import spindle_load
+
+        load = spindle_load(traj, simulate_material(traj, kin, setup), setup, machine.raw["spindle"])
+    return traj, load
+
+
+def cmd_compare(args):
+    from .compare import compare, format_report, load_recording
+
+    traj, load = _simulate_with_load(args)
+    report = compare(traj, load_recording(args.recording), load)
+    print(format_report(report, top=args.top))
+    if args.out:
+        Path(args.out).write_text(json.dumps(report, indent=1))
+        print(f"full report written to {args.out}")
+    return 1 if "error" in report else 0
+
+
+def cmd_synth_recording(args):
+    from .compare import synthetic_recording
+
+    traj, load = _simulate_with_load(args)
+    states = synthetic_recording(traj, dt=args.dt, time_scale=args.time_scale, offset=args.offset,
+                                 load=load, load_scale=args.load_scale)
+    Path(args.out).write_text("".join(json.dumps(st) + "\n" for st in states))
+    print(f"wrote {len(states)} states to {args.out}")
+    return 0
+
+
 def cmd_refresh_manifest(args):
     from .manifest import MANIFEST, refresh_manifest
 
@@ -302,6 +340,24 @@ def main(argv=None):
     p = sub.add_parser("tools", help="list tools from a tool library (.json Fusion / .csv) or job setup")
     p.add_argument("file")
     p.set_defaults(func=cmd_tools)
+
+    p = sub.add_parser("compare", help="compare a recorded run with the simulation of its program")
+    p.add_argument("program")
+    common(p)
+    p.add_argument("--recording", required=True, help="JSON lines from `record` or `serve --log`")
+    p.add_argument("--out", help="write the full report (JSON)")
+    p.add_argument("--top", type=int, default=10, help="lines to list")
+    p.set_defaults(func=cmd_compare)
+
+    p = sub.add_parser("synth-recording", help="make a fake recording of a program (to try `compare`)")
+    p.add_argument("program")
+    common(p)
+    p.add_argument("--out", required=True)
+    p.add_argument("--dt", type=float, default=0.1)
+    p.add_argument("--time-scale", type=float, default=1.1, help="how much slower the fake machine is")
+    p.add_argument("--offset", type=float, nargs=5, default=[0, 0, 0, 0, 0], metavar=("X", "Y", "Z", "B", "C"))
+    p.add_argument("--load-scale", type=float, default=1.3, help="actual / predicted spindle load")
+    p.set_defaults(func=cmd_synth_recording)
 
     p = sub.add_parser("refresh-manifest", help="copy config/umc500.yaml into web/assets/machine.json")
     p.set_defaults(func=cmd_refresh_manifest)
