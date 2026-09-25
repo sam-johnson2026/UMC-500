@@ -67,7 +67,10 @@ def solid_payload(solid: Solid | None) -> dict | None:
 
 
 def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None = None,
-            check_collisions: bool = True) -> dict:
+            check_collisions: bool = True, material: bool | None = None,
+            stock_out: str | Path | None = None) -> dict:
+    """Simulate a program. material=None runs the cutting sim whenever the setup has a stock
+    (unless the setup says `material: {enabled: false}`)."""
     machine = machine or load_machine()
     kin = Kinematics(machine)
     setup = setup or default_setup(kin)
@@ -78,10 +81,23 @@ def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None =
         result["error"] = str(e)
         return result
 
+    if material is None:
+        material = setup.stock is not None and setup.material.get("enabled", True)
+    mat = None
+    if material and setup.stock is not None:
+        from .material import simulate_material, surface_mesh, viewer_payload
+
+        mat = simulate_material(traj, kin, setup)
+        if stock_out:
+            surface_mesh(mat.grid.material, mat.grid.origin, mat.grid.res).export(str(stock_out))
+
     collisions = []
     if check_collisions:
         from .collision import CollisionChecker
-        collisions = [c.as_dict() for c in CollisionChecker(machine, kin, setup).check_trajectory(traj)]
+
+        # with the cutting sim, tool-vs-stock is judged against the material actually left
+        extra = {frozenset((t, "stock")) for t in ("cutter", "holder")} if mat else set()
+        collisions = [c.as_dict() for c in CollisionChecker(machine, kin, setup, extra_ignore=extra).check_trajectory(traj)]
 
     r3 = lambda a: np.round(np.asarray(a, dtype=float), 3).tolist()  # noqa: E731
     result.update({
@@ -107,6 +123,12 @@ def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None =
             "part": solid_payload(setup.part),
             "work_offsets": {k: r3(v) for k, v in setup.work_offsets.items()},
         },
+        "material": None if mat is None else {
+            **mat.summary(),
+            "issues": [i.as_dict() for i in mat.issues],
+            "removed_per_sample": r3(mat.removed_per_sample),
+            "grid": viewer_payload(mat),
+        },
         "program": gcode.splitlines(),
     })
     return result
@@ -122,6 +144,12 @@ def format_report(result: dict) -> str:
         f"{s['ideal_duration_s']:.1f} s without acceleration",
         f"tool changes {s['tool_changes']}",
     ]
+    m = result.get("material")
+    if m:
+        lines.append(f"material     {m['removed_volume_mm3'] / 1000:.1f} cm3 removed of {m['stock_volume_mm3'] / 1000:.1f} "
+                     f"(voxel {m['resolution_mm']:.2f} mm); {len(m['issues']) or 'no'} cutting issues")
+        for it in m["issues"][:20]:
+            lines.append(f"  line {it['line']:5d}  t={it['t']:8.2f}s  {it['kind']}: {it['detail']}")
     for key, title in (("limits", "travel limits"), ("collisions", "collisions"), ("warnings", "warnings")):
         items = result[key]
         if key == "collisions" and not result["collision_checked"]:

@@ -13,6 +13,7 @@ const S = {
   cfg: null, parts: null, q0: [0, 0, 0, 0, 0], q: [0, 0, 0, 0, 0], options: {},
   result: null, time: 0, playing: false, speed: 1, source: 'manual', server: false,
   live: null, listingStart: -1, lastLine: -1, currentTool: null, highlight: new Set(),
+  stock: null, lastMesh: 0,
 };
 
 // ---------------------------------------------------------------- scene
@@ -46,6 +47,20 @@ const CAMS = {
   table: [[900, -1150, 650], [0, 0, 0]],
 };
 function setCam(name) {
+  if (name === 'part') {
+    const target = S.stock?.mesh || jobGroup.getObjectByName('stock') || jobGroup.getObjectByName('part');
+    if (target) {
+      scene.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(target);
+      const c = box.getCenter(new THREE.Vector3());
+      const r = Math.max(box.getSize(new THREE.Vector3()).length(), 60);
+      camera.position.set(c.x + r * 1.1, c.y - r * 1.5, c.z + r * 1.0);
+      controls.target.copy(c);
+      controls.update();
+      return;
+    }
+    name = 'table';
+  }
   const [p, t] = CAMS[name];
   camera.position.set(...p);
   controls.target.set(...t);
@@ -230,7 +245,10 @@ function buildJob(result) {
     p.name = 'part';
     jobGroup.add(p);
   }
-  if (setup.stock) {
+  S.stock = null;
+  if (result.material?.grid) {
+    buildStockField(result.material.grid);   // machined stock, shown at the current time
+  } else if (setup.stock) {
     const st = solidMesh(setup.stock, 0x9ecae1, 0.45);
     st.name = 'stock';
     jobGroup.add(st);
@@ -255,6 +273,71 @@ function buildJob(result) {
   jobGroup.add(pathObj);
   jobGroup.add(tipMarker);
   refreshVisibility();
+}
+
+// ---------------------------------------------------------------- machined stock (voxels)
+// The cutting sim sends the voxel grid plus the time each voxel was cut, so the stock can be
+// shown at any moment: scrub the timeline and watch the part being machined.
+const stockMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.25, flatShading: true });
+const RAW = new THREE.Color(0x9ab7cf), CUT = new THREE.Color(0xd8c38a);
+function buildStockField(grid) {
+  const [nx, ny, nz] = grid.shape;
+  const n = nx * ny * nz;
+  const bits = b64(grid.initial_bits, Uint8Array);
+  const initial = new Uint8Array(n);
+  for (let i = 0; i < n; i++) initial[i] = (bits[i >> 3] >> (7 - (i & 7))) & 1;   // numpy packbits: MSB first
+  const idx = b64(grid.removed_index, Uint32Array), tt = b64(grid.removed_t, Float32Array);
+  const order = Array.from(idx.keys()).sort((a, b) => tt[a] - tt[b]);
+  S.stock = {
+    nx, ny, nz, res: grid.res, origin: grid.origin, initial, occ: initial.slice(),
+    idx: Uint32Array.from(order, (k) => idx[k]), t: Float32Array.from(order, (k) => tt[k]),
+    applied: 0, mesh: null, dirty: true,
+  };
+}
+function stockAt(t, force = false) {
+  const st = S.stock;
+  if (!st) return;
+  let lo = 0, hi = st.t.length;                // number of voxels cut by time t
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (st.t[mid] <= t) lo = mid + 1; else hi = mid; }
+  if (lo > st.applied) for (let i = st.applied; i < lo; i++) st.occ[st.idx[i]] = 0;
+  else for (let i = lo; i < st.applied; i++) st.occ[st.idx[i]] = 1;
+  if (lo !== st.applied) st.dirty = true;
+  st.applied = lo;
+  const now = performance.now();
+  if (st.dirty && (force || !S.playing || now - S.lastMesh > 150)) { remeshStock(); S.lastMesh = now; }
+}
+function remeshStock() {
+  const st = S.stock;
+  const { nx, ny, nz, res, origin, occ, initial } = st;
+  const pos = [], nrm = [], col = [], ind = [];
+  const at = (i, j, k) => (i < 0 || j < 0 || k < 0 || i >= nx || j >= ny || k >= nz) ? -1 : (i * ny + j) * nz + k;
+  const faces = [
+    [1, 0, 0, [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]]], [-1, 0, 0, [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]]],
+    [0, 1, 0, [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]]], [0, -1, 0, [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]]],
+    [0, 0, 1, [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]]], [0, 0, -1, [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]]],
+  ];
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) for (let k = 0; k < nz; k++) {
+    if (!occ[(i * ny + j) * nz + k]) continue;
+    for (const [dx, dy, dz, quad] of faces) {
+      const nb = at(i + dx, j + dy, k + dz);
+      if (nb >= 0 && occ[nb]) continue;
+      const c = nb >= 0 && initial[nb] ? CUT : RAW;   // neighbour was stock that got cut -> machined face
+      const base = pos.length / 3;
+      for (const [a, b, e] of quad) {
+        pos.push(origin[0] + (i + a) * res, origin[1] + (j + b) * res, origin[2] + (k + e) * res);
+        nrm.push(dx, dy, dz);
+        col.push(c.r, c.g, c.b);
+      }
+      ind.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(pos.length / 3 > 65535 ? new THREE.Uint32BufferAttribute(ind, 1) : new THREE.Uint16BufferAttribute(ind, 1));
+  if (st.mesh) { st.mesh.geometry.dispose(); st.mesh.geometry = g; } else { st.mesh = new THREE.Mesh(g, stockMat); jobGroup.add(st.mesh); }
+  st.dirty = false;
 }
 
 // ---------------------------------------------------------------- UI: DRO + jog
@@ -413,6 +496,7 @@ function seek(t) {
     $('tool-readout').textContent = toolNo ? `T${toolNo} ${tool.name || ''} · L ${tool.length} · Ø ${tool.diameter}` : 'No tool';
   }
   applyPose(q);
+  stockAt(S.time);
   showLine(r.line[k]);
   $('time').textContent = `${fmtTime(S.time)} / ${fmtTime(r.summary.duration_s)}`;
   if (document.activeElement !== $('scrub')) $('scrub').value = Math.round((S.time / Math.max(r.summary.duration_s, 1e-9)) * 1000);
@@ -605,6 +689,7 @@ function frame(now) {
     seek(S.time + dt * S.speed);
     if (S.time >= S.result.summary.duration_s) { S.playing = false; $('btn-play').textContent = '▶'; }
   }
+  if (S.stock?.dirty && !S.playing) remeshStock();
   controls.update();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);

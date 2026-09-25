@@ -66,6 +66,47 @@ class Kinematics:
         T = self.link_transforms(q)[self.spindle_link]
         return (T @ np.append(self.gauge + self.tool_dir * tool_length, 1.0))[:3]
 
+    def link_transforms_batch(self, Q) -> dict[str, np.ndarray]:
+        """link_transforms for many joint vectors at once: (N, 5) -> {link: (N, 4, 4)}."""
+        Q = np.atleast_2d(np.asarray(Q, dtype=float))
+        n = len(Q)
+        out = {"base": np.broadcast_to(np.eye(4), (n, 4, 4))}
+        for i, j in enumerate(self.joints):
+            d = Q[:, i] - self.q0[i]
+            T = np.tile(np.eye(4), (n, 1, 1))
+            if j.rotary:
+                a = np.radians(d)
+                x, y, z = j.axis
+                c, s_, t = np.cos(a), np.sin(a), 1 - np.cos(a)
+                R = np.empty((n, 3, 3))
+                R[:, 0, 0] = t * x * x + c
+                R[:, 0, 1] = t * x * y - s_ * z
+                R[:, 0, 2] = t * x * z + s_ * y
+                R[:, 1, 0] = t * x * y + s_ * z
+                R[:, 1, 1] = t * y * y + c
+                R[:, 1, 2] = t * y * z - s_ * x
+                R[:, 2, 0] = t * x * z - s_ * y
+                R[:, 2, 1] = t * y * z + s_ * x
+                R[:, 2, 2] = t * z * z + c
+                T[:, :3, :3] = R
+                T[:, :3, 3] = j.origin - R @ j.origin
+            else:
+                T[:, :3, 3] = d[:, None] * j.axis
+            out[j.name] = out[j.parent] @ T
+        return out
+
+    def tip_and_axis_in_table_batch(self, Q, tool_length: float) -> tuple[np.ndarray, np.ndarray]:
+        """Tool tip and tool axis (tip -> spindle) in the table frame for many joint vectors."""
+        L = self.link_transforms_batch(Q)
+        Ts, Tt = L[self.spindle_link], L[self.table_link]
+        tip_local = np.append(self.gauge + self.tool_dir * tool_length, 1.0)
+        tip_world = Ts @ tip_local
+        Tt_inv = np.linalg.inv(Tt)
+        tips = np.einsum("nij,nj->ni", Tt_inv, tip_world)[:, :3]
+        up_world = Ts[:, :3, :3] @ -self.tool_dir
+        axes = np.einsum("nji,nj->ni", Tt[:, :3, :3], up_world)
+        return tips, axes
+
     def tool_tip_in_table(self, q, tool_length: float = 0.0) -> np.ndarray:
         """Tool tip expressed in the table frame (= world frame with B, C at the CAD pose).
 

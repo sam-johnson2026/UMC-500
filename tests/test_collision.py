@@ -43,6 +43,17 @@ def test_demo_program_is_clean():
     setup = load_setup(EXAMPLES / "setup_demo.yaml", kin)
     r = run_job((EXAMPLES / "demo_5axis.nc").read_text(), m, setup)
     assert r["limits"] == [] and r["collisions"] == [] and r["warnings"] == []
+    assert r["material"]["issues"] == []
+    assert r["material"]["removed_volume_mm3"] == pytest.approx(14000, rel=0.05)
+
+
+def test_without_cutting_sim_rapid_into_stock_is_a_collision():
+    m = load_machine()
+    kin = Kinematics(m)
+    setup = load_setup(EXAMPLES / "setup_demo.yaml", kin)
+    r = run_job((EXAMPLES / "crash_demo.nc").read_text(), m, setup, material=False)
+    assert r["material"] is None
+    assert (9, "rapid_into_stock") in {(c["line"], c["kind"]) for c in r["collisions"]}
 
 
 def test_crash_demo_catches_each_mistake():
@@ -50,7 +61,7 @@ def test_crash_demo_catches_each_mistake():
     kin = Kinematics(m)
     setup = load_setup(EXAMPLES / "setup_demo.yaml", kin)
     r = run_job((EXAMPLES / "crash_demo.nc").read_text(), m, setup)
-    kinds = {(c["line"], c["kind"]) for c in r["collisions"]}
-    assert (9, "rapid_into_stock") in kinds                       # 1: G00 plunge
+    cutting = {(i["line"], i["kind"]) for i in r["material"]["issues"]}
+    assert (9, "rapid_into_material") in cutting                  # 1: G00 plunge (cutting sim)
     assert any(c["b"] == "platter_tslot" for c in r["collisions"])  # 2: head into tilted platter
     assert any(lim["message"].startswith("X=") for lim in r["limits"])  # 3: over-travel

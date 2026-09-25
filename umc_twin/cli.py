@@ -30,12 +30,14 @@ def cmd_simulate(args):
     from .sim import format_report, run_job
 
     machine, _, setup = _machine_and_setup(args)
-    result = run_job(Path(args.program).read_text(), machine, setup, check_collisions=not args.no_collisions)
+    result = run_job(Path(args.program).read_text(), machine, setup, check_collisions=not args.no_collisions,
+                     material=False if args.no_material else None, stock_out=args.stock_out)
     print(format_report(result))
     if args.out:
         Path(args.out).write_text(json.dumps(result))
         print(f"trajectory written to {args.out} (open it in the viewer)")
-    bad = "error" in result or result["limits"] or result["collisions"]
+    bad = "error" in result or result["limits"] or result["collisions"] or (
+        result.get("material") and result["material"]["issues"])
     return 1 if bad and args.strict else 0
 
 
@@ -157,7 +159,10 @@ def main(argv=None):
     common(p)
     p.add_argument("--out", help="write the trajectory JSON here (loadable in the viewer)")
     p.add_argument("--no-collisions", action="store_true")
-    p.add_argument("--strict", action="store_true", help="exit 1 on errors, limit violations or collisions")
+    p.add_argument("--no-material", action="store_true", help="skip the cutting (material removal) sim")
+    p.add_argument("--stock-out", metavar="STL", help="write the machined stock as an STL")
+    p.add_argument("--strict", action="store_true",
+                   help="exit 1 on errors, limit violations, collisions or cutting issues")
     p.set_defaults(func=cmd_simulate)
 
     p = sub.add_parser("serve", help="serve the 3D viewer + simulation API")
