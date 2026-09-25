@@ -9,8 +9,8 @@ Supported
   M-codes     M6 (with T), M3/M4/M5 (S), M8/M9, M0/M1 (recorded), M2/M30 end
 
 Anything else is ignored with a warning, so the sim never silently pretends to understand
-a code. Timing is feed/rapid-rate based without acceleration, so cycle times are optimistic
-on short moves.
+a code. Moves are first timed from feed / rapid rate alone; `simulate()` then re-times them
+with acceleration and cornering limits (timing.py).
 """
 from __future__ import annotations
 
@@ -47,6 +47,7 @@ class Trajectory:
     spindle: list[float] = field(default_factory=list)
     events: list[dict] = field(default_factory=list)
     warnings: list[dict] = field(default_factory=list)
+    t_ideal: list[float] | None = None                    # feed-rate-only times, before re-timing
 
     @property
     def duration(self) -> float:
@@ -538,5 +539,12 @@ class Interpreter:
             self._linear(t, rapid=rapid)
 
 
-def simulate(text: str, kin: Kinematics, setup: JobSetup, **kw) -> Trajectory:
-    return Interpreter(kin, setup, **kw).run(text)
+def simulate(text: str, kin: Kinematics, setup: JobSetup, accel: bool = True, **kw) -> Trajectory:
+    """Interpret `text`. With accel=True (default) the times include acceleration and cornering
+    (see timing.py); the feed-rate-only times are kept in `traj.t_ideal`."""
+    traj = Interpreter(kin, setup, **kw).run(text)
+    if accel:
+        from .timing import apply
+
+        apply(traj, kin.m)
+    return traj

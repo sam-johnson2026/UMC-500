@@ -21,7 +21,8 @@ def setup(kin):
 
 
 def run(kin, setup, body: str):
-    return simulate("G21 G90 G17 G94\nT1 M6\nG54 G43 H1\n" + body, kin, setup)
+    # accel=False: these tests check the interpreter's feed-rate timing; test_timing covers the planner
+    return simulate("G21 G90 G17 G94\nT1 M6\nG54 G43 H1\n" + body, kin, setup, accel=False)
 
 
 def last_tip(tr):

@@ -28,8 +28,10 @@ def summarise(traj: Trajectory) -> dict:
     t = np.array(traj.t)
     dt = np.diff(t, prepend=0.0)
     motion = np.array(traj.motion)
+    ideal = traj.t_ideal[-1] if traj.t_ideal else (float(t[-1]) if len(t) else 0.0)
     return {
         "duration_s": round(float(t[-1]) if len(t) else 0.0, 2),
+        "ideal_duration_s": round(float(ideal), 2),
         "rapid_s": round(float(dt[(motion == MOTION["rapid"]) | (motion == MOTION["home"])].sum()), 2),
         "cutting_s": round(float(dt[(motion == MOTION["feed"]) | (motion == MOTION["arc"])].sum()), 2),
         "toolchange_s": round(float(dt[motion == MOTION["toolchange"]].sum()), 2),
@@ -90,7 +92,8 @@ def format_report(result: dict) -> str:
     s = result["summary"]
     lines = [
         f"cycle time   {s['duration_s']:.1f} s  (cutting {s['cutting_s']:.1f}, rapid {s['rapid_s']:.1f}, "
-        f"tool change {s['toolchange_s']:.1f}, dwell {s['dwell_s']:.1f})",
+        f"tool change {s['toolchange_s']:.1f}, dwell {s['dwell_s']:.1f}); "
+        f"{s['ideal_duration_s']:.1f} s without acceleration",
         f"tool changes {s['tool_changes']}",
     ]
     for key, title in (("limits", "travel limits"), ("collisions", "collisions"), ("warnings", "warnings")):

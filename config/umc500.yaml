@@ -47,18 +47,21 @@ joints:
     axis: [1, 0, 0]
     limits: [-508.0, 0.0]          # 20 in travel
     max_velocity: 25400.0          # mm/min rapid (1000 ipm) -- VERIFY
+    max_accel: 3000.0              # mm/s^2 (~0.3 g) -- placeholder, tune against real cycle times
   Y:
     type: linear
     parent: X
     axis: [0, 1, 0]
     limits: [-406.4, 0.0]          # 16 in travel
     max_velocity: 25400.0
+    max_accel: 3000.0
   Z:
     type: linear
     parent: Y
     axis: [0, 0, 1]
     limits: [-355.6, 0.0]          # 14 in travel
     max_velocity: 25400.0
+    max_accel: 3000.0
   B:
     type: rotary
     parent: base
@@ -66,6 +69,7 @@ joints:
     origin: [0, 0, 0]
     limits: [-35.0, 110.0]
     max_velocity: 6000.0           # deg/min -- placeholder, VERIFY from parameters
+    max_accel: 1000.0              # deg/s^2 -- placeholder
   C:
     type: rotary
     parent: B
@@ -73,6 +77,13 @@ joints:
     origin: [0, 0, 0]
     limits: null                   # continuous
     max_velocity: 6000.0           # deg/min -- placeholder, VERIFY
+    max_accel: 2000.0              # deg/s^2 -- placeholder
+
+# Look-ahead model used for cycle-time estimates (umc_twin/timing.py).
+# corner_time: how abrupt a direction change the servos absorb, as seconds at full acceleration.
+# Larger = faster through corners. Placeholder; tune so simulated times match the machine.
+motion:
+  corner_time: 0.015
 
 max_cutting_feed: 16510.0          # mm/min (650 ipm) -- VERIFY
 
