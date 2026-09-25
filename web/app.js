@@ -734,6 +734,11 @@ async function loadRecording(file) {
   }
 }
 $('file-rec').addEventListener('change', (e) => { if (e.target.files[0] && S.result) loadRecording(e.target.files[0]); });
+$('btn-sample-rec').addEventListener('click', async () => {
+  if (!S.result || !S.result.program?.[1]?.includes('O01000')) await loadExample('demo_5axis');
+  const text = await (await fetch('assets/examples/demo_5axis_recording.txt')).text();
+  await loadRecording({ text: async () => text });
+});
 $('chk-follow').addEventListener('change', (e) => {
   S.follow = e.target.checked;
   S.playing = false;
