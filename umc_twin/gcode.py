@@ -242,8 +242,7 @@ class Interpreter:
     def _record(self, line: int, motion: int, dt: float):
         tr = self.traj
         tr.t.append((tr.t[-1] if tr.t else 0.0) + dt)
-        tr.q.append(self.s.q.copy())
-        tr.tip.append(self.kin.tool_tip_in_table(self.s.q, self.setup.tool(self.s.tool).length))
+        tr.q.append(self.s.q.copy())  # tool tips are filled in, batched, at the end of run()
         tr.line.append(line)
         tr.motion.append(motion)
         tr.tool.append(self.s.tool)
@@ -409,7 +408,18 @@ class Interpreter:
             if action == "end":
                 break
         self._comp_flush()
+        self._fill_tips()
         return self.traj
+
+    def _fill_tips(self):
+        tr = self.traj
+        q = np.asarray(tr.q)
+        tools = np.asarray(tr.tool)
+        tips = np.zeros((len(q), 3))
+        for n in set(tools.tolist()):
+            ks = np.nonzero(tools == n)[0]
+            tips[ks], _ = self.kin.tip_and_axis_in_table_batch(q[ks], self.setup.tool(n).length)
+        tr.tip = list(tips)
 
     def _execute(self, fr: _Frame, idx: int):
         line = fr.prog.clean[idx]

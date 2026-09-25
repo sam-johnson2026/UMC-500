@@ -137,17 +137,29 @@ class CollisionChecker:
 
     def check_trajectory(self, traj: Trajectory, linear_step: float = 2.0, rotary_step: float = 1.0,
                          max_reports: int = 50) -> list[Collision]:
-        """Densify each segment to <= linear_step mm / rotary_step deg and test every pose.
-        Reports the first contact of each (pair, line) so one crash doesn't flood the list."""
+        """Test poses every `linear_step` mm / `rotary_step` deg of travel (long moves are split,
+        runs of tiny CAM moves are checked every few mm instead of at every block), plus the end
+        of every rapid and every tool change. Reports the first contact of each (pair, line)."""
         t, q, _ = traj.arrays()
         seen, out = set(), []
         cutter_in_stock = False
+        progress = 1.0          # distance since the last checked pose, in units of the step
+        last_tool = None
         for k in range(1, len(t)):
             dq = q[k] - q[k - 1]
-            n = int(max(1, np.ceil(max(np.max(np.abs(dq[:3])) / linear_step,
-                                       np.max(np.abs(dq[3:])) / rotary_step))))
+            span = float(max(np.max(np.abs(dq[:3])) / linear_step, np.max(np.abs(dq[3:])) / rotary_step))
             rapid = traj.motion[k] in (MOTION["rapid"], MOTION["home"], MOTION["toolchange"])
-            for f in np.linspace(1.0 / n, 1.0, n):
+            fractions = []
+            if span > 1.0:
+                fractions = list(np.linspace(1.0 / np.ceil(span), 1.0, int(np.ceil(span))))
+                progress = 0.0
+            else:
+                progress += span
+                if progress >= 1.0 or rapid or traj.tool[k] != last_tool or k == len(t) - 1:
+                    fractions = [1.0]
+                    progress = 0.0
+            last_tool = traj.tool[k]
+            for f in fractions:
                 qs = q[k - 1] + dq * f
                 hits = self.check_pose(qs, traj.tool[k], rapid=True)
                 in_stock = any(kind == "rapid_into_stock" for *_, kind in hits)
@@ -163,6 +175,7 @@ class CollisionChecker:
                     out.append(Collision(t[k - 1] + (t[k] - t[k - 1]) * f, traj.line[k], a, b, qs.tolist(), kind))
                     if len(out) >= max_reports:
                         return out
+        return out
         return out
 
 

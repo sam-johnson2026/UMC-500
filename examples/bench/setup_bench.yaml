@@ -1,0 +1,9 @@
+# Setup for the benchmark surface: 90 x 90 x 30 aluminium block on the platter, G54 top centre.
+units: mm
+tools:
+  5: {name: "6 mm ball", type: ball, length: 95.0, diameter: 6.0, flute_length: 12.0,
+      holder: [[40, 16, 24], [20, 50, 50]]}
+work_offsets:
+  G54: {table_point: [0, 0, -20.8]}
+stock: {type: box, size: [90, 90, 30], position: [0, 0, -50.8]}
+material: {name: aluminum_6061}

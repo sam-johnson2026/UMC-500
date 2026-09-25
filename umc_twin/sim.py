@@ -66,9 +66,40 @@ def solid_payload(solid: Solid | None) -> dict | None:
     return d
 
 
+def viewer_indices(traj, max_samples: int = 30000) -> list[int]:
+    """Samples to send to the viewer. Long CAM programs have far more samples than a picture
+    needs; keep every change of motion type / tool / spindle and otherwise one sample per
+    `tol` mm of tool-tip travel (or 0.5 deg of rotary), with `tol` grown until it fits.
+    The analysis (times, cutting, collisions) always uses every sample."""
+    n = len(traj.t)
+    if n <= max_samples:
+        return list(range(n))
+    tip = np.asarray(traj.tip)
+    q = np.asarray(traj.q)
+    tol = 0.05
+    while True:
+        keep = [0]
+        last = 0
+        for k in range(1, n):
+            if (traj.motion[k] != traj.motion[last] or traj.tool[k] != traj.tool[last]
+                    or traj.spindle[k] != traj.spindle[last] or k == n - 1
+                    or np.linalg.norm(tip[k] - tip[last]) >= tol or np.max(np.abs(q[k, 3:] - q[last, 3:])) >= 0.5):
+                keep.append(k)
+                last = k
+        if len(keep) <= max_samples or tol > 50:
+            return keep
+        tol *= 2
+
+
+def _bucket_starts(keep: list[int]) -> list[int]:
+    """reduceat starts so that bucket i sums the samples (keep[i-1], keep[i]]."""
+    return [0] + [k + 1 for k in keep[:-1]] if len(keep) > 1 else [0]
+
+
 def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None = None,
             check_collisions: bool = True, material: bool | None = None,
-            stock_out: str | Path | None = None, search_paths: list | None = None) -> dict:
+            stock_out: str | Path | None = None, search_paths: list | None = None,
+            max_samples: int = 30000) -> dict:
     """Simulate a program. material=None runs the cutting sim whenever the setup has a stock
     (unless the setup says `material: {enabled: false}`)."""
     machine = machine or load_machine()
@@ -103,16 +134,19 @@ def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None =
         collisions = [c.as_dict() for c in CollisionChecker(machine, kin, setup, extra_ignore=extra).check_trajectory(traj)]
 
     r3 = lambda a: np.round(np.asarray(a, dtype=float), 3).tolist()  # noqa: E731
+    keep = viewer_indices(traj, max_samples)
+    pick = lambda a: [a[i] for i in keep]  # noqa: E731
     result.update({
         "summary": summarise(traj),
-        "t": r3(traj.t),
-        "q": r3(traj.q),
-        "tip": r3(traj.tip),
-        "line": traj.line,
-        "motion": traj.motion,
+        "samples_total": len(traj.t),
+        "t": r3(pick(traj.t)),
+        "q": r3(pick(traj.q)),
+        "tip": r3(pick(traj.tip)),
+        "line": pick(traj.line),
+        "motion": pick(traj.motion),
         "motion_codes": MOTION,
-        "tool": traj.tool,
-        "spindle": r3(traj.spindle),
+        "tool": pick(traj.tool),
+        "spindle": r3(pick(traj.spindle)),
         "events": traj.events,
         "warnings": traj.warnings,
         "limits": limit_violations(traj, kin),
@@ -129,7 +163,7 @@ def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None =
         "material": None if mat is None else {
             **mat.summary(),
             "issues": [i.as_dict() for i in mat.issues],
-            "removed_per_sample": r3(mat.removed_per_sample),
+            "removed_per_sample": r3(np.add.reduceat(mat.removed_per_sample, _bucket_starts(keep))),
             "grid": viewer_payload(mat),
         },
         "spindle_load": load,

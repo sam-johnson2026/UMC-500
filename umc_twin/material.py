@@ -182,24 +182,39 @@ class MaterialSim:
         cut_t: list[float] = []
         cut_v: list[float] = []
         cut_s: list[float] = []
+        # tool tip / axis at both ends of every segment, for the tool used on it (batched kinematics)
+        tools = np.asarray(traj.tool)
+        tip0, tip1 = np.zeros((len(t), 3)), np.zeros((len(t), 3))
+        ax0 = np.zeros((len(t), 3))
+        for tool_no in set(tools[1:].tolist()) - {0}:
+            ks = np.nonzero(tools == tool_no)[0]
+            ks = ks[ks > 0]
+            L = self.setup.tool(tool_no).length
+            tip0[ks], ax0[ks] = self.kin.tip_and_axis_in_table_batch(q[ks - 1], L)
+            tip1[ks], _ = self.kin.tip_and_axis_in_table_batch(q[ks], L)
+        since_body = BODY_STEP  # path travelled since the last shank/holder contact check
         for k in range(1, len(t)):
             tool_no = traj.tool[k]
             if tool_no == 0:
                 continue  # no tool in the spindle
             tool = self.setup.tool(tool_no)
-            poses = self._substeps(q[k - 1], q[k], tool)
+            poses = self._substeps(q[k - 1], q[k], tool, tip0[k], tip1[k], ax0[k])
             if not poses:
                 continue
             rapid = traj.motion[k] in RAPIDS
             spindle_off = abs(traj.spindle[k]) < 1e-9
-            # shank/holder contact needs far coarser spacing than cutting: every ~BODY_STEP mm
-            every = max(1, int(BODY_STEP / self.step))
             prev_f = 0.0
-            for i, (f, tip, axis) in enumerate(poses):
+            prev_tip = tip0[k]
+            for f, tip, axis in poses:
                 span = float((t[k] - t[k - 1]) * (f - prev_f))
                 prev_f = f
                 tt = float(t[k - 1] + (t[k] - t[k - 1]) * f)
-                check_body = (i % every == every - 1) or i == len(poses) - 1
+                # shank/holder contact needs far coarser spacing than cutting: every ~BODY_STEP mm
+                since_body += float(np.linalg.norm(tip - prev_tip))
+                prev_tip = tip
+                check_body = since_body >= BODY_STEP
+                if check_body:
+                    since_body = 0.0
                 cut_n, body_hit, gouge_n = self._apply(tip, axis, tool, tt, check_body)
                 if cut_n:
                     vol = cut_n * self.voxel_volume
@@ -220,13 +235,11 @@ class MaterialSim:
         return MaterialResult(g, removed, sorted(issues, key=lambda i: i.t), self.target,
                               np.array(cut_t), np.array(cut_v), np.array(cut_s))
 
-    def _substeps(self, q0, q1, tool: Tool):
+    def _substeps(self, q0, q1, tool: Tool, tip0, tip1, axis0):
         """(fraction, tip, axis) poses along a segment, spaced <= self.step at the tip.
         Tips/axes are in the table frame; axis points from the tip up the tool."""
         kin = self.kin
         g = self.grid
-        tip0 = kin.tool_tip_in_table(q0, tool.length)
-        tip1 = kin.tool_tip_in_table(q1, tool.length)
         # quick reject: the whole tool stays clear of the stock's bounding box
         # (only valid when the rotaries don't move -- otherwise the tip path is curved)
         rot = float(np.max(np.abs(q1[3:] - q0[3:])))
@@ -238,7 +251,7 @@ class MaterialSim:
         if dist < 1e-9 and rot < 1e-9:
             return []
         if rot < 1e-9:
-            axis = -kin.tool_axis_in_table(q0)
+            axis = axis0
             n = max(1, math.ceil(dist / self.step))
             return [(i / n, tip0 + (tip1 - tip0) * (i / n), axis) for i in range(1, n + 1)]
         # rotaries move: the tip path is curved in the table frame -- evaluate the kinematics
@@ -270,7 +283,7 @@ class MaterialSim:
         top = tip + axis * tool.length
         start = tip + axis * tool.flute_length
         rmax = max(tool.shank_diameter, tool.holder_diameter) / 2
-        box = g.index_box(np.minimum(start, top) - rmax, np.maximum(start, top) + rmax) if check_body else None
+        box = g.index_box(*_cylinder_box(start, top, axis, rmax)) if check_body else None
         if box is not None and g.material[box].any():
             h, rho = self._local(box, tip, axis)
             cand = g.material[box] & (h > tool.flute_length) & (h <= tool.length) & (rho <= rmax)
@@ -282,7 +295,7 @@ class MaterialSim:
         # 2) flutes: remove material
         fl_top = tip + axis * tool.flute_length
         r = tool.radius
-        box = g.index_box(np.minimum(tip, fl_top) - r, np.maximum(tip, fl_top) + r)
+        box = g.index_box(*_cylinder_box(tip, fl_top, axis, r))
         if box is None:
             return 0, body_hit, 0
         mat = g.material[box]
@@ -313,6 +326,12 @@ class MaterialSim:
         h = rx * axis[0] + ry * axis[1] + rz * axis[2]
         rho2 = rx * rx + ry * ry + rz * rz - h * h
         return h, np.sqrt(np.maximum(rho2, 0.0))
+
+
+def _cylinder_box(p0, p1, axis, r):
+    """Axis-aligned bounds of a cylinder of radius r from p0 to p1 along `axis`."""
+    ext = r * np.sqrt(np.maximum(1.0 - np.asarray(axis) ** 2, 0.0)) + 1e-6
+    return np.minimum(p0, p1) - ext, np.maximum(p0, p1) + ext
 
 
 # ---------------------------------------------------------------------- output
