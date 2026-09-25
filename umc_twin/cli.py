@@ -245,6 +245,24 @@ def cmd_synth_recording(args):
     return 0
 
 
+def cmd_check(args):
+    from .check import check, format_html, format_text
+
+    machine = load_machine(options=_options(args.option))
+    rows = check(args.paths, machine, args.setup)
+    if not rows:
+        print("no programs found")
+        return 1
+    print(format_text(rows))
+    if args.html:
+        Path(args.html).write_text(format_html(rows, machine.raw["machine"]["name"]))
+        print(f"report written to {args.html}")
+    if args.json:
+        Path(args.json).write_text(json.dumps(rows, indent=1))
+    worst = "fail" if any(r["status"] == "fail" for r in rows) else "warn" if any(r["status"] == "warn" for r in rows) else "pass"
+    return 1 if worst == "fail" or (worst == "warn" and args.fail_on_warn) else 0
+
+
 def cmd_refresh_manifest(args):
     from .manifest import MANIFEST, refresh_manifest
 
@@ -358,6 +376,14 @@ def main(argv=None):
     p.add_argument("--offset", type=float, nargs=5, default=[0, 0, 0, 0, 0], metavar=("X", "Y", "Z", "B", "C"))
     p.add_argument("--load-scale", type=float, default=1.3, help="actual / predicted spindle load")
     p.set_defaults(func=cmd_synth_recording)
+
+    p = sub.add_parser("check", help="pre-flight check a batch of programs (files or folders)")
+    p.add_argument("paths", nargs="+")
+    common(p)
+    p.add_argument("--html", help="write an HTML report")
+    p.add_argument("--json", help="write the results as JSON")
+    p.add_argument("--fail-on-warn", action="store_true", help="exit 1 on warnings too")
+    p.set_defaults(func=cmd_check)
 
     p = sub.add_parser("refresh-manifest", help="copy config/umc500.yaml into web/assets/machine.json")
     p.set_defaults(func=cmd_refresh_manifest)
