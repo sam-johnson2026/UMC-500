@@ -107,9 +107,12 @@
     </section>
 
     <section class="tab card hidden" id="tab-live">
-      <p>Poses the model from the server's live source (<code>/api/live</code>). Today that is a replay of a
-        simulated program: start the server with <code>--replay program.nc</code>. Real machine data plugs in
-        at the same place (see <code>umc_twin/live.py</code>).</p>
+      <p>Poses the model from the server's live source (<code>/api/live</code>). Start the server with one of:</p>
+      <ul class="hint">
+        <li><code>--mtconnect http://&lt;agent&gt;:&lt;port&gt;</code>: the machine</li>
+        <li><code>--replay program.nc --setup job.yaml</code>: a simulated run</li>
+        <li><code>--replay-log run.jsonl</code>: a recording</li>
+      </ul>
       <div class="row">
         <button id="btn-live" class="primary">Connect</button>
         <span id="live-status" class="sub">disconnected</span>

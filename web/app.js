@@ -652,7 +652,9 @@ function connectLive() {
   es.onmessage = (ev) => {
     const st = JSON.parse(ev.data);
     applyPose(st.q);
-    $('live-status').textContent = `${st.source} · ${st.mode || ''} · line ${st.line ?? '–'} · T${st.tool ?? '–'} · S${Math.round(st.spindle_rpm ?? 0)}`;
+    const load = st.spindle_load != null ? ` · load ${Math.round(st.spindle_load)}%` : '';
+    $('live-status').textContent = `${st.source} · ${st.execution || st.mode || ''} · ${st.program || ''} line ${st.line ?? '–'} · ` +
+      `T${st.tool ?? '–'} · S${Math.round(st.spindle_rpm ?? 0)}${load}`;
     setMode('LIVE · ' + st.source.toUpperCase(), 'live');
     if (S.result?.program && st.line) showLine(st.line);
   };

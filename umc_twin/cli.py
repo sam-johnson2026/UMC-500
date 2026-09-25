@@ -42,17 +42,86 @@ def cmd_simulate(args):
     return 1 if bad and args.strict else 0
 
 
-def cmd_serve(args):
-    from .live import ReplaySource
-    from .server import serve
+def _live_source(args):
+    """The live source chosen on the command line (None if none)."""
+    from .live import JsonlLogger, LogReplaySource, ReplaySource
 
     live = None
-    if args.replay:
+    if getattr(args, "mtconnect", None):
+        from .mtconnect import MTConnectSource
+
+        cfg = (load_machine().raw.get("live") or {}).get("mtconnect") or {}
+        live = MTConnectSource(args.mtconnect, device=args.device or cfg.get("device"),
+                               data_items=cfg.get("data_items"), scale=cfg.get("scale"))
+        print("MTConnect mapping:\n" + live.mapping.describe())
+    elif getattr(args, "replay_log", None):
+        live = LogReplaySource(args.replay_log, speed=args.speed)
+    elif getattr(args, "replay", None):
         from .gcode import simulate
 
         _, kin, setup = _machine_and_setup(args)
         live = ReplaySource(simulate(Path(args.replay).read_text(), kin, setup), speed=args.speed)
-    serve(port=args.port, live=live, host=args.host)
+    if live is not None and getattr(args, "log", None):
+        live = JsonlLogger(live, args.log)
+    return live
+
+
+def cmd_serve(args):
+    from .server import serve
+
+    serve(port=args.port, live=_live_source(args), host=args.host)
+    return 0
+
+
+def cmd_mtconnect_probe(args):
+    from .mtconnect import auto_mapping, fetch, parse_current, parse_probe, state_from_values
+
+    base = args.url.rstrip("/")
+    dev = f"/{args.device}" if args.device else ""
+    items = parse_probe(fetch(f"{base}{dev}/probe"))
+    print(f"{len(items)} data items")
+    mapping = auto_mapping(items, args.device)
+    print(mapping.describe())
+    st = state_from_values(parse_current(fetch(f"{base}{dev}/current")), mapping)
+    print("current:", st.as_dict() if st else "no complete position yet (axes UNAVAILABLE?)")
+    return 0
+
+
+def cmd_fake_agent(args):
+    from .mtconnect_agent import make_server
+
+    live = _live_source(args)
+    if live is None:
+        print("give --replay PROGRAM (with --setup) or --replay-log FILE")
+        return 1
+    httpd = make_server(live, port=args.port, host=args.host)
+    print(f"fake MTConnect agent on http://{args.host}:{args.port}/ (probe, current) serving {live.name}")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+def cmd_record(args):
+    """Record a live source to JSON lines, e.g. the machine during a run."""
+    import time
+
+    from .live import JsonlLogger
+
+    live = _live_source(args)
+    if live is None:
+        print("give --mtconnect URL (or --replay / --replay-log)")
+        return 1
+    logger = live if isinstance(live, JsonlLogger) else JsonlLogger(live, args.out, min_interval=1.0 / args.rate)
+    end = time.monotonic() + args.seconds if args.seconds else None
+    print(f"recording {live.name} to {args.out} (Ctrl-C to stop)")
+    try:
+        while end is None or time.monotonic() < end:
+            logger.read()
+            time.sleep(1.0 / args.rate / 2)
+    except KeyboardInterrupt:
+        pass
     return 0
 
 
@@ -155,6 +224,14 @@ def main(argv=None):
         p.add_argument("--option", action="append", metavar="KEY=VALUE",
                        help="machine option, e.g. spindle=hsk (repeatable)")
 
+    def live_args(p):
+        g = p.add_argument_group("live source (pick one)")
+        g.add_argument("--mtconnect", metavar="URL", help="MTConnect agent, e.g. http://192.168.1.50:8082")
+        g.add_argument("--device", help="MTConnect device name (if the agent serves several)")
+        g.add_argument("--replay", metavar="PROGRAM", help="stream this program as a fake live machine")
+        g.add_argument("--replay-log", metavar="JSONL", help="play back a recording")
+        g.add_argument("--speed", type=float, default=1.0, help="replay speed multiplier")
+
     p = sub.add_parser("simulate", help="run a G-code program and report time / limits / collisions")
     p.add_argument("program")
     common(p)
@@ -170,9 +247,29 @@ def main(argv=None):
     common(p)
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--replay", metavar="PROGRAM", help="stream this program as a fake live machine")
-    p.add_argument("--speed", type=float, default=1.0, help="replay speed multiplier")
+    live_args(p)
+    p.add_argument("--log", metavar="JSONL", help="also record the live source to this file")
     p.set_defaults(func=cmd_serve)
+
+    p = sub.add_parser("mtconnect-probe", help="show what the twin would read from an MTConnect agent")
+    p.add_argument("url")
+    p.add_argument("--device")
+    p.set_defaults(func=cmd_mtconnect_probe)
+
+    p = sub.add_parser("fake-agent", help="serve a simulated program as an MTConnect agent (for testing)")
+    common(p)
+    p.add_argument("--port", type=int, default=5000)
+    p.add_argument("--host", default="127.0.0.1")
+    live_args(p)
+    p.set_defaults(func=cmd_fake_agent)
+
+    p = sub.add_parser("record", help="record a live source (e.g. the machine) to JSON lines")
+    common(p)
+    live_args(p)
+    p.add_argument("--out", required=True)
+    p.add_argument("--rate", type=float, default=10.0, help="states per second")
+    p.add_argument("--seconds", type=float, help="stop after this long")
+    p.set_defaults(func=cmd_record)
 
     p = sub.add_parser("pose", help="tool position / limits / collisions at one machine position")
     p.add_argument("q", nargs=5, type=float, metavar=("X", "Y", "Z", "B", "C"))

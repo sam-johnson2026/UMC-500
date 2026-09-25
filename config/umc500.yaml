@@ -154,3 +154,12 @@ options:
 # Approximate density used for the mass properties exported with the meshes (kg/m^3).
 # Uniform cast iron -- good enough to seed a later dynamics model, not for real numbers.
 density: 7200.0
+
+# Live data (umc_twin/mtconnect.py). Data items are picked automatically from the agent's /probe;
+# `python -m umc_twin mtconnect-probe URL` shows the choice. Pin ids here only if it guesses wrong.
+# live:
+#   mtconnect:
+#     url: http://192.168.1.50:8082
+#     device: UMC500
+#     data_items: {X: Xabs, spindle_load: Sload}
+#     scale: {X: 25.4}          # only if an adapter reports inches (the standard says mm)
