@@ -7,7 +7,7 @@ name = "umc-twin"
 version = "0.1.0"
 description = "Kinematic digital twin of a Haas UMC-500 5-axis mill: G-code sim, collision checks, web viewer"
 requires-python = ">=3.10"
-dependencies = ["numpy>=1.24", "pyyaml>=6", "trimesh>=4"]
+dependencies = ["numpy>=1.24", "pyyaml>=6", "trimesh>=4", "scipy>=1.10"]
 
 [project.optional-dependencies]
 collision = ["python-fcl>=0.7"]
