@@ -52,7 +52,8 @@
      -508.0,
      0.0
     ],
-    "max_velocity": 25400.0
+    "max_velocity": 25400.0,
+    "max_accel": 3000.0
    },
    "Y": {
     "type": "linear",
@@ -66,7 +67,8 @@
      -406.4,
      0.0
     ],
-    "max_velocity": 25400.0
+    "max_velocity": 25400.0,
+    "max_accel": 3000.0
    },
    "Z": {
     "type": "linear",
@@ -80,7 +82,8 @@
      -355.6,
      0.0
     ],
-    "max_velocity": 25400.0
+    "max_velocity": 25400.0,
+    "max_accel": 3000.0
    },
    "B": {
     "type": "rotary",
@@ -99,7 +102,8 @@
      -35.0,
      110.0
     ],
-    "max_velocity": 6000.0
+    "max_velocity": 6000.0,
+    "max_accel": 1000.0
    },
    "C": {
     "type": "rotary",
@@ -115,8 +119,12 @@
      0
     ],
     "limits": null,
-    "max_velocity": 6000.0
+    "max_velocity": 6000.0,
+    "max_accel": 2000.0
    }
+  },
+  "motion": {
+   "corner_time": 0.015
   },
   "max_cutting_feed": 16510.0,
   "spindle": {
@@ -130,7 +138,11 @@
     0,
     0,
     -1
-   ]
+   ],
+   "max_rpm": 15000,
+   "max_power_kw": 22.4,
+   "max_torque_nm": 122.0,
+   "efficiency": 0.8
   },
   "table": {
    "link": "C",

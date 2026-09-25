@@ -113,6 +113,13 @@ function toolTipInTable(len) {
 }
 
 // ---------------------------------------------------------------- machine model
+// Meshes are .glb; hosts that won't serve .glb can get them as {"glb_b64": "..."} .json instead.
+async function loadPart(loader, url) {
+  if (!url.endsWith('.json')) return loader.loadAsync(url);
+  const { glb_b64: data } = await (await fetch(url)).json();
+  const buf = b64(data, Uint8Array).buffer;
+  return new Promise((resolve, reject) => loader.parse(buf, '', resolve, reject));
+}
 async function loadMachine() {
   const manifest = await (await fetch('assets/machine.json')).json();
   S.cfg = manifest.config;
@@ -132,7 +139,7 @@ async function loadMachine() {
   let done = 0;
   $('load-count').textContent = `0 / ${todo.length}`;
   await Promise.all(todo.map(async (p) => {
-    const gltf = await loader.loadAsync(`assets/${S.parts[p.id].file}`);
+    const gltf = await loadPart(loader, `assets/${S.parts[p.id].file}`);
     const opacity = p.opacity ?? 1;
     const mat = new THREE.MeshStandardMaterial({
       color: p.color, metalness: 0.35, roughness: 0.55,
