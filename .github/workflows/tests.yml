@@ -21,4 +21,5 @@ jobs:
       - name: Example programs stay clean
         run: |
           python -m umc_twin simulate examples/demo_5axis.nc --setup examples/setup_demo.yaml --strict
+          python -m umc_twin simulate examples/macro_comp_demo.nc --setup examples/setup_demo.yaml --strict
           node --check web/app.js

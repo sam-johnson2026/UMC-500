@@ -12,7 +12,7 @@ from umc_twin.job import load_setup  # noqa: E402
 from umc_twin.kinematics import Kinematics  # noqa: E402
 from umc_twin.sim import format_report, run_job  # noqa: E402
 
-EXAMPLES = {"demo_5axis": "setup_demo.yaml", "crash_demo": "setup_demo.yaml"}
+EXAMPLES = {"demo_5axis": "setup_demo.yaml", "crash_demo": "setup_demo.yaml", "macro_comp_demo": "setup_demo.yaml"}
 
 out_dir = ROOT / "web" / "assets" / "examples"
 out_dir.mkdir(parents=True, exist_ok=True)

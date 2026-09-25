@@ -31,7 +31,8 @@ def cmd_simulate(args):
 
     machine, _, setup = _machine_and_setup(args)
     result = run_job(Path(args.program).read_text(), machine, setup, check_collisions=not args.no_collisions,
-                     material=False if args.no_material else None, stock_out=args.stock_out)
+                     material=False if args.no_material else None, stock_out=args.stock_out,
+                     search_paths=[Path(args.program).resolve().parent])
     print(format_report(result))
     if args.out:
         Path(args.out).write_text(json.dumps(result))
@@ -60,7 +61,8 @@ def _live_source(args):
         from .gcode import simulate
 
         _, kin, setup = _machine_and_setup(args)
-        live = ReplaySource(simulate(Path(args.replay).read_text(), kin, setup), speed=args.speed)
+        live = ReplaySource(simulate(Path(args.replay).read_text(), kin, setup,
+                                     search_paths=[Path(args.replay).resolve().parent]), speed=args.speed)
     if live is not None and getattr(args, "log", None):
         live = JsonlLogger(live, args.log)
     return live

@@ -103,10 +103,10 @@ def test_dwell_seconds_vs_milliseconds(kin, setup):
 
 
 def test_tool_change_time_and_unknown_codes(kin, setup):
-    tr = run(kin, setup, "G0 X0 Y0 Z10.\nG12.1\nM99\nT7 M6")
+    tr = run(kin, setup, "G0 X0 Y0 Z10.\nG12.1\nM123\nT7 M6")
     assert sum(e["type"] == "toolchange" for e in tr.events) == 2
     msgs = " ".join(w["message"] for w in tr.warnings)
-    assert "G12.1" in msgs and "M99" in msgs and "T7" in msgs
+    assert "G12.1" in msgs and "M123" in msgs and "T7" in msgs
 
 
 def test_feed_without_f_is_an_error(kin, setup):

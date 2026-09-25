@@ -756,6 +756,7 @@ $('jog-tool').addEventListener('change', (e) => { buildTool({ length: Number(e.t
 $('btn-sim').addEventListener('click', simulate);
 $('btn-demo').addEventListener('click', () => loadExample('demo_5axis'));
 $('btn-crash').addEventListener('click', () => loadExample('crash_demo'));
+$('btn-macro').addEventListener('click', () => loadExample('macro_comp_demo'));
 $('file-nc').addEventListener('change', async (e) => {
   const f = e.target.files[0];
   if (!f) return;

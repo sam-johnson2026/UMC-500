@@ -6,20 +6,31 @@ Supported
   5-axis      G234 (TCPC) and G254 (DWO) -- XYZ are programmed in the part frame and the
               control compensates for B/C; G49 cancels G234, G255 cancels G254
   cycles      G73 G81 G82 G83 G84 G85 G86 G89 with G98/G99, L repeats, G80 cancel
+  cutter comp G41/G42 with D (G17 plane), G40 cancel -- see _comp_* below
+  rotation    G68 X Y R / G69
+  offsets     G10 L2/L20 (work offsets), L10-L13 (tool length / diameter, geometry and wear)
+  programs    M97 P (local N label), M98 P / M98 "file" (O-number in this file or a file next to
+              it), M99 (and M99 P), G65 P macro calls with arguments, L repeats
+  macros      #variables, expressions, IF / GOTO / WHILE (see macro.py) and system variables
+              for positions, work offsets and tool offsets
   M-codes     M6 (with T), M3/M4/M5 (S), M8/M9, M0/M1 (recorded), M2/M30 end
 
 Anything else is ignored with a warning, so the sim never silently pretends to understand
 a code. Moves are first timed from feed / rapid rate alone; `simulate()` then re-times them
 with acceleration and cornering limits (timing.py).
+
+G10 and macro writes change the job setup's offsets in place, like the control's offset pages.
 """
 from __future__ import annotations
 
 import math
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 
+from . import macro
 from .job import JobSetup, _normalise_offset_name
 from .kinematics import Kinematics
 
@@ -28,6 +39,12 @@ MOTION = {"rapid": 0, "feed": 1, "arc": 2, "dwell": 3, "toolchange": 4, "home": 
 CYCLES = {73, 81, 82, 83, 84, 85, 86, 89}
 G73_RETRACT = 1.27   # mm, Haas setting 22 default (0.050 in)
 G83_CLEARANCE = 1.27  # mm, Haas setting 52-ish: rapid back down to just above the last peck
+MAX_BLOCKS = 2_000_000  # a runaway macro loop stops here
+PROGRAM_SUFFIXES = ("", ".nc", ".NC", ".ngc", ".tap", ".txt")
+KNOWN_G = {0, 1, 2, 3, 4, 10, 17, 18, 19, 20, 21, 28, 40, 41, 42, 43, 47, 49, 50, 51, 53, 54, 55, 56, 57, 58,
+           59, 65, 68, 69, 80, 90, 91, 93, 94, 98, 99, 103, 150, 154, 187, 234, 254, 255} | CYCLES
+WORK_VARS = {5221: "G54", 5241: "G55", 5261: "G56", 5281: "G57", 5301: "G58", 5321: "G59"}
+VAR_AXIS = {0: 0, 1: 1, 2: 2, 4: 3, 5: 4}   # offset within a Haas variable block (X Y Z A B C) -> our X Y Z B C
 
 
 class GCodeError(Exception):
@@ -70,6 +87,7 @@ class _State:
     work: str = "G54"
     tlo: bool = False
     h: int = 0
+    d: int = 0
     tcp: bool = False              # G234 or G254 active
     tool: int = 0
     next_tool: int | None = None
@@ -81,15 +99,72 @@ class _State:
     cycle_q: float | None = None
     cycle_p: float = 0.0
     cycle_initial_z: float | None = None
+    comp: int = 40                 # 40 / 41 / 42
+    rotation: tuple[float, float, float] | None = None   # G68: centre x, y, angle (deg)
+
+
+@dataclass
+class _Program:
+    name: str
+    raw: list[str]
+    clean: list[str]
+    main: bool
+    labels: dict[int, int] = field(default_factory=dict)   # N number -> line index
+    onums: dict[int, int] = field(default_factory=dict)    # O number -> line index
+    loops: dict[int, int] = field(default_factory=dict)    # WHILE <-> END line indexes
+
+    @classmethod
+    def parse(cls, name: str, text: str, main: bool) -> "_Program":
+        raw = text.splitlines()
+        clean = [_clean(r) for r in raw]
+        p = cls(name, raw, clean, main)
+        stack: dict[int, list[int]] = {}
+        for i, c in enumerate(clean):
+            m = re.match(r"^N\s*(\d+)", c)
+            if m:
+                p.labels.setdefault(int(m.group(1)), i)
+            m = re.match(r"^[O:]\s*(\d+)", c)
+            if m:
+                p.onums.setdefault(int(m.group(1)), i)
+            body = _strip_n(c)
+            m = macro.WHILE_RE.match(body)
+            if m:
+                stack.setdefault(int(m.group(2)), []).append(i)
+            m = macro.END_RE.match(body)
+            if m and stack.get(int(m.group(1))):
+                w = stack[int(m.group(1))].pop()
+                p.loops[w], p.loops[i] = i, w
+        return p
+
+
+@dataclass
+class _Frame:
+    prog: _Program
+    pc: int
+    start_pc: int = 0
+    repeats: int = 1
+    call_line: int = 0             # display line of the caller (for code in other files)
+    macro_call: bool = False
+
+
+def _clean(raw: str) -> str:
+    line = re.sub(r"\(.*?\)", " ", raw.upper())
+    return line.split(";", 1)[0].strip()
+
+
+def _strip_n(clean: str) -> str:
+    return re.sub(r"^N\s*\d+\s*", "", clean)
 
 
 class Interpreter:
     def __init__(self, kin: Kinematics, setup: JobSetup, start: np.ndarray | None = None,
-                 arc_tolerance: float = 0.01, rotary_step: float = 0.5):
+                 arc_tolerance: float = 0.01, rotary_step: float = 0.5,
+                 search_paths: list[str | Path] | None = None):
         self.kin = kin
         self.setup = setup
         self.arc_tol = arc_tolerance
         self.rot_step = rotary_step
+        self.search_paths = [Path(p) for p in (search_paths or [])]
         self.vmax = np.array([j.max_velocity for j in kin.joints])  # per minute
         q = np.zeros(5) if start is None else np.asarray(start, dtype=float)
         self.s = _State(q=q.copy(), p=np.zeros(5))
@@ -99,6 +174,15 @@ class Interpreter:
         self._warned: set[str] = set()
         self._decimal: set[str] = set()
         self.line_no = 0
+        self.vars = macro.Variables(self._sysvar_get, self._sysvar_set)
+        self.frames: list[_Frame] = []
+        self._raw_line = ""
+        # cutter compensation
+        self.prog_pos = self.s.p.copy()    # programmed (uncompensated) position while comp is on
+        self._pending: dict | None = None  # the compensated move waiting for the next one
+        self._deferred: list = []          # non-XY moves queued behind it
+        self._comp_started = False
+        self._alarm = False
 
     # ------------------------------------------------------------------ frames
     def _tool_length(self) -> float:
@@ -111,7 +195,16 @@ class Interpreter:
             self.setup.work_offsets[name] = np.zeros(5)
         return self.setup.work_offsets[name]
 
+    def _rotate(self, xy, inverse: bool = False):
+        cx, cy, ang = self.s.rotation
+        a = math.radians(-ang if inverse else ang)
+        dx, dy = xy[0] - cx, xy[1] - cy
+        return cx + dx * math.cos(a) - dy * math.sin(a), cy + dx * math.sin(a) + dy * math.cos(a)
+
     def _q_from_prog(self, p: np.ndarray) -> np.ndarray:
+        if self.s.rotation is not None:
+            p = p.copy()
+            p[0], p[1] = self._rotate(p[:2])
         wo, L = self._wo(), self._tool_length()
         b, c = p[3] + wo[3], p[4] + wo[4]
         if self.s.tcp:
@@ -131,11 +224,14 @@ class Interpreter:
             p[:3] = self.kin.tool_tip_in_table(q, L) - origin
         else:
             p[:3] = q[:3] - wo[:3] - self.kin.A_inv @ (-self.kin.tool_dir * L)
+        if self.s.rotation is not None:
+            p[0], p[1] = self._rotate(p[:2], inverse=True)
         return p
 
     def _resync(self):
         """Mode change (offset, TLO, TCPC): machine stays put, program position is re-derived."""
         self.s.p = self._prog_from_q(self.s.q)
+        self.prog_pos = self.s.p.copy()
 
     # ------------------------------------------------------------------ recording
     def _record(self, line: int, motion: int, dt: float):
@@ -201,6 +297,8 @@ class Interpreter:
             self.s.p = ps[-1].copy()
         else:
             self._resync()
+        if self.s.comp == 40 and self._pending is None:
+            self.prog_pos = self.s.p.copy()
 
     def _linear(self, target: np.ndarray, rapid: bool):
         p0 = self.s.p
@@ -211,9 +309,8 @@ class Interpreter:
         ps = [p0 + (target - p0) * (k / n) for k in range(1, n + 1)]
         self._follow(ps, rapid)
 
-    def _arc(self, target: np.ndarray, words: dict, clockwise: bool):
-        u, v, w = {17: (0, 1, 2), 18: (2, 0, 1), 19: (1, 2, 0)}[self.s.plane]
-        p0 = self.s.p
+    def _arc_centre(self, p0: np.ndarray, target: np.ndarray, words: dict, clockwise: bool):
+        u, v, _ = {17: (0, 1, 2), 18: (2, 0, 1), 19: (1, 2, 0)}[self.s.plane]
         start = np.array([p0[u], p0[v]])
         end = np.array([target[u], target[v]])
         if "R" in words:
@@ -231,10 +328,18 @@ class Interpreter:
             sign = -1 if clockwise else 1
             if r < 0:
                 sign = -sign
-            centre = mid + sign * h * perp
-        else:
-            ijk = [words.get(k, 0.0) * self.s.units for k in "IJK"]
-            centre = start + np.array([ijk[u], ijk[v]])
+            return mid + sign * h * perp
+        ijk = [words.get(k, 0.0) * self.s.units for k in "IJK"]
+        return start + np.array([ijk[u], ijk[v]])
+
+    def _arc(self, target: np.ndarray, words: dict, clockwise: bool):
+        self._arc_about(target, self._arc_centre(self.s.p, target, words, clockwise), clockwise)
+
+    def _arc_about(self, target: np.ndarray, centre: np.ndarray, clockwise: bool):
+        u, v, _ = {17: (0, 1, 2), 18: (2, 0, 1), 19: (1, 2, 0)}[self.s.plane]
+        p0 = self.s.p
+        start = np.array([p0[u], p0[v]])
+        end = np.array([target[u], target[v]])
         r0 = np.linalg.norm(start - centre)
         r1 = np.linalg.norm(end - centre)
         if abs(r0 - r1) > 0.01 + 1e-3 * r0:
@@ -273,21 +378,235 @@ class Interpreter:
     def _dwell(self, seconds: float, kind: int = MOTION["dwell"]):
         self._record(self.line_no, kind, max(seconds, 0.0))
 
-    # ------------------------------------------------------------------ blocks
-    def run(self, text: str) -> Trajectory:
-        for i, raw in enumerate(text.splitlines(), start=1):
-            self.line_no = i
-            if self._block(raw) == "end":
+    # ------------------------------------------------------------------ program flow
+    def run(self, text: str, name: str = "main") -> Trajectory:
+        main = _Program.parse(name, text, main=True)
+        self.frames = [_Frame(main, 0)]
+        blocks = 0
+        while self.frames:
+            fr = self.frames[-1]
+            if fr.pc >= len(fr.prog.clean):
+                if len(self.frames) == 1:
+                    break
+                self._return()
+                continue
+            idx = fr.pc
+            fr.pc += 1
+            blocks += 1
+            if blocks > MAX_BLOCKS:
+                raise GCodeError(f"line {self.line_no}: stopped after {MAX_BLOCKS} blocks -- endless loop?")
+            self.line_no = idx + 1 if fr.prog.main else fr.call_line
+            self._raw_line = fr.prog.raw[idx]
+            try:
+                action = self._execute(fr, idx)
+            except macro.MacroError as e:
+                raise GCodeError(f"line {self.line_no}: {e}") from None
+            if action == "end":
                 break
+        self._comp_flush()
         return self.traj
 
-    def _parse(self, raw: str) -> tuple[list[float], list[float], dict]:
-        line = re.sub(r"\(.*?\)", " ", raw.upper())
-        line = line.split(";", 1)[0].strip()
+    def _execute(self, fr: _Frame, idx: int):
+        line = fr.prog.clean[idx]
         if not line or line.startswith("%") or line.startswith("/"):
-            return [], [], {}
+            return None
+        body = _strip_n(line)
+        if re.match(r"^[O:]\s*\d+", body):
+            return None  # program header
+        if body.startswith(("#", "IF", "GOTO", "WHILE", "END", "DO")):
+            return self._statement(fr, idx, body)
+        m98_file = re.search(r'M\s*98\s*"([^"]+)"', line)
+        if m98_file:
+            return self._call(self._find_program(m98_file.group(1)), 1, macro_args=None)
         if "#" in line or "[" in line:
-            self._warn("macro variables / expressions are not supported; block ignored", "macro")
+            line = macro.substitute(line, self.vars)
+        gs, ms, w = self._parse(line)
+        if not gs and not ms and not w:
+            return None
+        action = self._block(gs, ms, w)
+        if isinstance(action, tuple):
+            kind = action[0]
+            if kind == "local":
+                _, label, repeats = action
+                if label not in fr.prog.labels:
+                    raise GCodeError(f"line {self.line_no}: M97 P{label}: no N{label} in this program")
+                start = fr.prog.labels[label]   # the N line itself carries code
+                self.frames.append(_Frame(fr.prog, start, start, repeats, self.line_no))
+                return None
+            if kind == "external":
+                _, number, repeats = action
+                return self._call(self._find_program(number), repeats, None)
+            if kind == "macro":
+                _, number, repeats, args = action
+                return self._call(self._find_program(number), repeats, args)
+            if kind == "return":
+                if len(self.frames) == 1:
+                    self._warn("M99 in the main program (the control would loop forever); stopping here")
+                    return "end"
+                ret_label = action[1]
+                self._return()
+                if ret_label is not None:
+                    caller = self.frames[-1]
+                    if ret_label not in caller.prog.labels:
+                        raise GCodeError(f"line {self.line_no}: M99 P{ret_label}: no N{ret_label}")
+                    caller.pc = caller.prog.labels[ret_label]
+                return None
+        return action
+
+    def _statement(self, fr: _Frame, idx: int, body: str):
+        v = self.vars
+        if (m := macro.WHILE_RE.match(body)):
+            if not macro.evaluate(m.group(1), v):
+                fr.pc = fr.prog.loops.get(idx, idx) + 1
+            return None
+        if macro.END_RE.match(body):
+            if idx not in fr.prog.loops:
+                raise GCodeError(f"line {self.line_no}: END without WHILE")
+            fr.pc = fr.prog.loops[idx]
+            return None
+        if (m := macro.IF_GOTO_RE.match(body)):
+            if macro.evaluate(m.group(1), v):
+                self._goto(fr, m.group(2))
+            return None
+        if (m := macro.IF_THEN_RE.match(body)):
+            if macro.evaluate(m.group(1), v):
+                macro.assign(m.group(2).strip(), v)
+            return None
+        if (m := macro.GOTO_RE.match(body)):
+            self._goto(fr, m.group(1))
+            return None
+        if macro.assign(body, v):
+            return "end" if self._alarm else None
+        raise GCodeError(f"line {self.line_no}: can't read macro statement {body!r}")
+
+    def _goto(self, fr: _Frame, target: str):
+        n = int(macro._n(macro.evaluate(target, self.vars)))
+        if n not in fr.prog.labels:
+            raise GCodeError(f"line {self.line_no}: GOTO {n}: no N{n} in this program")
+        fr.pc = fr.prog.labels[n]
+
+    def _find_program(self, ref) -> tuple[_Program, int]:
+        """(program, start index) for an O-number or file name: this file first, then files."""
+        main = self.frames[0].prog
+        if isinstance(ref, int) and ref in main.onums:
+            return main, main.onums[ref] + 1
+        names = [str(ref)] if not isinstance(ref, int) else [f"O{ref:05d}", f"O{ref}", str(ref)]
+        dirs = self.search_paths or [Path(".")]
+        for d in dirs:
+            for n in names:
+                for suffix in PROGRAM_SUFFIXES:
+                    f = d / f"{n}{suffix}"
+                    if f.is_file():
+                        prog = _Program.parse(f.name, f.read_text(errors="replace"), main=False)
+                        return prog, 0
+        raise GCodeError(f"line {self.line_no}: subprogram {ref} not found (looked in this file and "
+                         f"{', '.join(str(d) for d in dirs)})")
+
+    def _call(self, found: tuple[_Program, int], repeats: int, macro_args: dict | None):
+        prog, start = found
+        if len(self.frames) > 20:
+            raise GCodeError(f"line {self.line_no}: subprograms nested deeper than 20")
+        if macro_args is not None:
+            self.vars.push(macro_args)
+        self.frames.append(_Frame(prog, start, start, max(repeats, 1), self.line_no, macro_args is not None))
+        return None
+
+    def _return(self):
+        fr = self.frames.pop()
+        if fr.repeats > 1:
+            fr.repeats -= 1
+            fr.pc = fr.start_pc
+            self.frames.append(fr)
+            return
+        if fr.macro_call:
+            self.vars.pop()
+
+    # ------------------------------------------------------------------ system variables
+    def _sysvar_get(self, n: int):
+        s = self.s
+        if 5021 <= n <= 5025:
+            v = s.q[n - 5021]
+            return v / s.units if n - 5021 < 3 else v
+        if 5041 <= n <= 5045:
+            v = self.prog_pos[n - 5041]
+            return v / s.units if n - 5041 < 3 else v
+        wo = self._work_var(n)
+        if wo is not None:
+            name, i = wo
+            v = self.setup.work_offset(name)[i]
+            return v / s.units if i < 3 else v
+        tool = self._tool_var(n)
+        if tool is not None:
+            kind, t = tool
+            if kind == "length":
+                return t.length / s.units
+            if kind == "diameter":
+                return (2 * t.d_offset if t.d_offset is not None else t.diameter) / s.units
+            return 0.0  # wear
+        modal = {4001: s.motion if s.motion < 4 else s.motion, 4003: 90 if s.absolute else 91,
+                 4006: 20 if s.units != 1.0 else 21, 4014: _offset_code(s.work), 4109: s.feed / s.units,
+                 4111: s.h, 4107: s.d, 4119: s.spindle_speed, 4120: s.tool,
+                 3001: self.traj.duration * 1000.0, 3002: self.traj.duration / 3600.0}
+        if n in modal:
+            return float(modal[n])
+        self._warn(f"system variable #{n} not simulated; reads as vacant", f"#{n}")
+        return None
+
+    def _sysvar_set(self, n: int, v) -> bool:
+        s = self.s
+        val = macro._n(v)
+        if n == 3000:
+            self._alarm = True
+            msg = re.search(r"\((.*?)\)", self._raw_line)
+            self._event("alarm", f"#3000 alarm {int(val)}" + (f": {msg.group(1)}" if msg else ""))
+            self._warn(f"program raised alarm #3000 = {int(val)}" + (f" ({msg.group(1)})" if msg else ""))
+            return True
+        if n == 3006:
+            msg = re.search(r"\((.*?)\)", self._raw_line)
+            self._event("stop", "#3006 stop" + (f": {msg.group(1)}" if msg else ""))
+            return True
+        wo = self._work_var(n)
+        if wo is not None:
+            name, i = wo
+            off = self.setup.work_offsets.setdefault(name, np.zeros(5))
+            off[i] = val * (s.units if i < 3 else 1.0)
+            self._resync()
+            return True
+        tool = self._tool_var(n)
+        if tool is not None:
+            kind, t = tool
+            if kind == "length":
+                t.length = val * s.units
+            elif kind == "diameter":
+                t.d_offset = val * s.units / 2.0
+            else:
+                self._warn(f"#{n}: tool wear offsets are not simulated", f"#{n}")
+            self._resync()
+            return True
+        return False
+
+    @staticmethod
+    def _work_var(n: int):
+        for base, name in WORK_VARS.items():
+            if base <= n <= base + 5 and (n - base) in VAR_AXIS:
+                return name, VAR_AXIS[n - base]
+        if 7001 <= n <= 8985 and (n - 7001) % 20 <= 5 and ((n - 7001) % 20) in VAR_AXIS:
+            return f"G154P{(n - 7001) // 20 + 1}", VAR_AXIS[(n - 7001) % 20]
+        return None
+
+    def _tool_var(self, n: int):
+        for base, kind in ((2001, "length"), (2201, "wear"), (2401, "diameter"), (2601, "wear")):
+            if base <= n < base + 200:
+                num = n - base + 1
+                if num not in self.setup.tools:
+                    self.setup.tools[num] = self.setup.tool(num).__class__(number=num)
+                return kind, self.setup.tools[num]
+        return None
+
+    # ------------------------------------------------------------------ blocks
+    def _parse(self, line: str) -> tuple[list[float], list[float], dict]:
+        line = line.strip()
+        if not line or line.startswith("%") or line.startswith("/"):
             return [], [], {}
         gs, ms, words = [], [], {}
         self._decimal = {letter for letter, value in WORD_RE.findall(line) if "." in value}
@@ -307,12 +626,12 @@ class Interpreter:
                 words[letter] = val
         return gs, ms, words
 
-    def _block(self, raw: str):
-        gs, ms, w = self._parse(raw)
-        if not gs and not ms and not w:
-            return None
+    def _block(self, gs, ms, w):
         s = self.s
         mode_changed = False
+        if 65 in gs:  # macro call: every other word is an argument (#1-#26), not a modal word
+            args = {macro.G65_ARGS[k]: v for k, v in w.items() if k in macro.G65_ARGS}
+            return ("macro", int(w.get("P", 0)), int(w.get("L", 1)), args)
 
         # --- modal settings -------------------------------------------------------
         for g in gs:
@@ -329,6 +648,7 @@ class Interpreter:
             elif 54 <= g <= 59 or g == 154:
                 name = f"G{int(g)}" if g != 154 else f"G154P{int(w.get('P', 1))}"
                 if name != s.work:
+                    self._comp_flush()
                     s.work = _normalise_offset_name(name)
                     mode_changed = True
         if "F" in w:
@@ -339,9 +659,28 @@ class Interpreter:
                 s.spindle = math.copysign(s.spindle_speed, s.spindle)
         if "T" in w:
             s.next_tool = int(w["T"])
+        if "D" in w:
+            s.d = int(w["D"])
+
+        # --- G10 / G65 / G68 take their words as data, not motion ----------------------
+        if 10 in gs:
+            self._g10(gs, w)
+            return None
+        if 68 in gs:
+            self._comp_flush()
+            cx = w.get("X", self.prog_pos[0] / s.units) * s.units
+            cy = w.get("Y", self.prog_pos[1] / s.units) * s.units
+            s.rotation = (cx, cy, w.get("R", 0.0))
+            self._resync()
+            return None
+        if 69 in gs and s.rotation is not None:
+            self._comp_flush()
+            s.rotation = None
+            mode_changed = True
 
         # --- tool change / spindle / coolant ------------------------------------------
         if 6 in ms:
+            self._comp_flush()
             self._tool_change()
         for m in ms:
             if m in (3, 4):
@@ -355,9 +694,10 @@ class Interpreter:
             elif m in (0, 1):
                 self._event("stop", f"M{m:02d} program stop")
             elif m in (2, 30):
+                self._comp_flush()
                 self._event("end", f"M{m}")
                 return "end"
-            elif m != 6:
+            elif m not in (6, 97, 98, 99):
                 self._warn(f"M{m} ignored", f"M{m}")
 
         # --- length comp / 5-axis modes -------------------------------------------------
@@ -379,6 +719,7 @@ class Interpreter:
                 s.tcp = False
                 mode_changed = True
         if mode_changed:
+            self._comp_flush()
             self._resync()
 
         # --- non-modal ------------------------------------------------------------------
@@ -387,32 +728,49 @@ class Interpreter:
             self._warn("A axis word ignored (UMC-500 has B/C only)", "A")
         for g in gs:
             if g == 4:
-                self._dwell(self._seconds(w.get("P", 0.0)))
-                return None
+                if self._pending is not None:
+                    secs = self._seconds(w.get("P", 0.0))
+                    self._deferred.append(lambda secs=secs: self._dwell(secs))
+                else:
+                    self._dwell(self._seconds(w.get("P", 0.0)))
+                return self._sub_action(ms, w)
             if g == 53:
+                self._comp_flush()
                 q = s.q.copy()
                 for a, v in axes.items():
                     i = "XYZBC".index(a)
                     q[i] = v * (s.units if i < 3 else 1.0)
                 self._machine_move(q)
-                return None
+                return self._sub_action(ms, w)
             if g == 28:
+                self._comp_flush()
                 self._home(axes)
-                return None
-            if g in (10, 41, 42, 40, 68, 69, 51, 50, 187, 103, 65, 47, 150):
-                if g not in (40, 69, 50, 187):
+                return self._sub_action(ms, w)
+            if g in (51, 50, 187, 103, 47, 150):
+                if g not in (50, 187):
                     self._warn(f"G{g:g} ignored", f"G{g:g}")
-                if g == 10:
-                    return None
+
+        # --- cutter compensation mode ---------------------------------------------------
+        comp_off = 40 in gs and (s.comp != 40 or self._pending is not None)
+        for g in gs:
+            if g in (41, 42):
+                if s.tcp:
+                    self._warn("cutter compensation with G234/G254 is not simulated; ignored", "comp-tcp")
+                    continue
+                if s.comp == 40:
+                    self._comp_started = False
+                s.comp = int(g)
 
         # --- motion ---------------------------------------------------------------------
         for g in gs:
             if g in (0, 1, 2, 3, 80) or g in CYCLES:
                 s.motion = int(g)
-            elif g not in (4, 10, 17, 18, 19, 20, 21, 28, 40, 41, 42, 43, 47, 49, 50, 51, 53, 54, 55, 56, 57, 58,
-                           59, 65, 68, 69, 80, 90, 91, 93, 94, 98, 99, 103, 150, 154, 187, 234, 254, 255):
+            elif g not in KNOWN_G:
                 self._warn(f"G{g:g} not supported; ignored", f"G{g:g}")
         if s.motion in CYCLES:
+            if s.comp != 40:
+                self._warn("canned cycle with cutter compensation on; compensation ignored for the cycle")
+                self._comp_flush()
             if any(g in CYCLES for g in gs):
                 s.cycle_initial_z = s.p[2]
                 s.cycle_q = w["Q"] * s.units if "Q" in w else s.cycle_q
@@ -429,26 +787,217 @@ class Interpreter:
                 s.cycle_r = w["R"] * s.units
             if any(a in axes for a in "XYBC") or any(g in CYCLES for g in gs):
                 self._cycle(axes, int(w.get("L", 1)))
-            return None
-        if not axes:
-            return None
-        target = self._target(axes)
+            return self._sub_action(ms, w)
+
+        if comp_off:
+            target = self._target(axes) if axes else None
+            self._comp_flush()
+            s.comp = 40
+            if target is not None:
+                self._move(target, w)
+            self.prog_pos = self.s.p.copy()
+            return self._sub_action(ms, w)
+        if axes:
+            target = self._target(axes)
+            if s.comp != 40 and s.plane == 17 and s.motion in (0, 1, 2, 3):
+                self._comp_move(target, w)
+            else:
+                self._move(target, w)
+        return self._sub_action(ms, w)
+
+    def _sub_action(self, ms, w):
+        if 97 in ms:
+            return ("local", int(w.get("P", 0)), int(w.get("L", 1)))
+        if 98 in ms:
+            return ("external", int(w.get("P", 0)), int(w.get("L", 1)))
+        if 99 in ms:
+            self._comp_flush()
+            return ("return", int(w["P"]) if "P" in w else None)
+        return None
+
+    def _move(self, target, w):
+        s = self.s
         if s.motion == 0:
             self._linear(target, rapid=True)
         elif s.motion == 1:
             self._linear(target, rapid=False)
         elif s.motion in (2, 3):
             self._arc(target, w, clockwise=s.motion == 2)
-        return None
 
     def _target(self, axes: dict) -> np.ndarray:
         s = self.s
-        t = s.p.copy()
+        t = (self.prog_pos if (s.comp != 40 or self._pending is not None) else s.p).copy()
         for a, v in axes.items():
             i = "XYZBC".index(a)
             val = v * (s.units if i < 3 else 1.0)
             t[i] = val if s.absolute else t[i] + val
         return t
+
+    def _g10(self, gs, w):
+        s = self.s
+        L = int(w.get("L", 2))
+        P = int(w.get("P", 0))
+        if L in (2, 20):
+            if L == 2 and P == 0:
+                self._warn("G10 L2 P0 (common offset) not simulated", "g10-p0")
+                return
+            name = f"G{53 + P}" if L == 2 else f"G154P{P}"
+            off = self.setup.work_offsets.setdefault(name, np.zeros(5))
+            for a, i in (("X", 0), ("Y", 1), ("Z", 2), ("B", 3), ("C", 4)):
+                if a in w:
+                    v = w[a] * (s.units if i < 3 else 1.0)
+                    off[i] = v if s.absolute else off[i] + v
+        elif L in (1, 10, 11, 12, 13):
+            if P not in self.setup.tools:
+                self.setup.tools[P] = self.setup.tool(P).__class__(number=P)
+            t = self.setup.tools[P]
+            if "R" in w:
+                v = w["R"] * s.units
+                if L in (1, 10):
+                    t.length = v if s.absolute else t.length + v
+                elif L == 11:
+                    t.length += v   # length wear
+                elif L == 12:
+                    t.d_offset = v / 2 if s.absolute else (t.d_offset if t.d_offset is not None else t.radius) + v / 2
+                else:
+                    self._warn("G10 L13 (diameter wear) not simulated", "g10-l13")
+        else:
+            self._warn(f"G10 L{L} not simulated", f"g10-l{L}")
+            return
+        self._comp_flush()
+        self._resync()
+
+    # ------------------------------------------------------------------ cutter compensation
+    # Compensated moves are held one block back: where a move must end depends on the next one
+    # (inside corners are trimmed to the intersection of the two offset paths, outside corners
+    # get an arc around the corner). Moves without XY motion are queued behind the held move.
+    def _comp_radius(self) -> float:
+        t = self.setup.tool(self.s.d or self.s.tool)
+        return t.d_offset if t.d_offset is not None else t.radius
+
+    def _comp_move(self, target, w):
+        s = self.s
+        start = self.prog_pos[:2].copy()
+        end = target[:2].copy()
+        if np.linalg.norm(end - start) < 1e-9 and s.motion in (0, 1):
+            # no XY motion (Z / rotary only): runs after the held move
+            if self._pending is None:
+                self._move_with_comp_xy(target, s.motion == 0)
+            else:
+                self._deferred.append(lambda tgt=target.copy(), rapid=s.motion == 0:
+                                      self._move_with_comp_xy(tgt, rapid))
+            self.prog_pos = target.copy()
+            return
+        seg = {"motion": s.motion, "start": start, "end": end, "target": target.copy(), "line": self.line_no,
+               "feed": s.feed, "inverse": s.inverse_time, "startup": not self._comp_started,
+               "side": 1.0 if s.comp == 41 else -1.0, "r": self._comp_radius()}
+        if s.motion in (2, 3):
+            seg["centre"] = self._arc_centre(self.prog_pos, target, w, s.motion == 2)
+            seg["cw"] = s.motion == 2
+        self._comp_started = True
+        self.prog_pos = target.copy()
+        if self._pending is not None:
+            self._comp_emit(self._pending, seg)
+        self._pending = seg
+
+    def _move_with_comp_xy(self, target, rapid):
+        t = target.copy()
+        t[:2] = self.s.p[:2]  # stay on the compensated XY position
+        self._linear(t, rapid)
+
+    @staticmethod
+    def _tangent(seg, at_end: bool) -> np.ndarray:
+        if seg["motion"] in (2, 3):
+            p = seg["end"] if at_end else seg["start"]
+            rv = p - seg["centre"]
+            t = np.array([rv[1], -rv[0]]) if seg["cw"] else np.array([-rv[1], rv[0]])
+        else:
+            t = seg["end"] - seg["start"]
+        n = np.linalg.norm(t)
+        return t / n if n > 1e-12 else np.array([1.0, 0.0])
+
+    @staticmethod
+    def _normal(seg, t) -> np.ndarray:
+        return seg["side"] * np.array([-t[1], t[0]]) * seg["r"]   # left of travel for G41
+
+    def _comp_emit(self, seg, nxt):
+        """Emit the held move `seg`; `nxt` is the following compensated move (or None)."""
+        s = self.s
+        saved = (self.line_no, s.feed, s.inverse_time)
+        self.line_no, s.feed, s.inverse_time = seg["line"], seg["feed"], seg["inverse"]
+        try:
+            E = seg["end"]
+            tA = self._tangent(seg, at_end=True)
+            nA = self._normal(seg, tA)
+            rapid = seg["motion"] == 0
+            if seg["startup"]:
+                n = self._normal(seg, self._tangent(nxt, at_end=False)) if nxt else nA
+                if seg["motion"] in (2, 3):
+                    self._warn("cutter compensation start-up on an arc; treated as a straight move")
+                self._to_xy(seg, E + n, rapid)
+            elif nxt is None:
+                self._seg_to(seg, E + nA)
+            else:
+                tB = self._tangent(nxt, at_end=False)
+                nB = self._normal(nxt, tB)
+                cross = tA[0] * tB[1] - tA[1] * tB[0]
+                dot = float(tA @ tB)
+                if abs(cross) < 1e-6 and dot > 0:          # tangent (or straight on)
+                    self._seg_to(seg, E + nA)
+                    if np.linalg.norm(nA - nB) > 1e-6:
+                        self._to_xy(seg, E + nB, False)
+                elif seg["side"] * cross < 0 or (abs(cross) < 1e-6 and dot < 0):   # outside corner
+                    self._seg_to(seg, E + nA)
+                    t = seg["target"].copy()
+                    t[:2] = E + nB
+                    self._arc_about(t, E, clockwise=seg["side"] > 0)
+                elif seg["motion"] not in (2, 3) and nxt["motion"] not in (2, 3):   # inside, two lines
+                    A = np.column_stack([tA, -tB])
+                    a, _ = np.linalg.solve(A, nB - nA)
+                    J = E + nA + a * tA
+                    if a > 0 or (np.linalg.norm(E - seg["start"]) + a) < 0:
+                        self._warn(f"cutter compensation: move shorter than the tool radius "
+                                   f"({seg['r']:.3f} mm) -- the tool would gouge", f"comp-short-{seg['line']}")
+                    self._to_xy(seg, J, rapid)
+                else:
+                    self._warn("cutter compensation at an inside corner with an arc is approximated",
+                               "comp-arc-inside")
+                    self._seg_to(seg, E + nA)
+                    self._to_xy(seg, E + nB, False)
+            for fn in self._deferred:
+                fn()
+            self._deferred = []
+        finally:
+            self.line_no, s.feed, s.inverse_time = saved
+
+    def _to_xy(self, seg, xy, rapid):
+        t = seg["target"].copy()
+        t[:2] = xy
+        self._linear(t, rapid)
+
+    def _seg_to(self, seg, xy):
+        """Move along the offset version of `seg` to `xy` (on the offset path)."""
+        if seg["motion"] in (2, 3):
+            C = seg["centre"]
+            if np.linalg.norm(xy - C) < 1e-6:
+                self._warn(f"cutter compensation: arc radius smaller than the tool radius ({seg['r']:.3f} mm)",
+                           f"comp-arc-{seg['line']}")
+                self._to_xy(seg, xy, False)
+                return
+            t = seg["target"].copy()
+            t[:2] = xy
+            self._arc_about(t, C, seg["cw"])
+        else:
+            self._to_xy(seg, xy, seg["motion"] == 0)
+
+    def _comp_flush(self):
+        if self._pending is not None:
+            seg, self._pending = self._pending, None
+            self._comp_emit(seg, None)
+        elif self._deferred:
+            for fn in self._deferred:
+                fn()
+            self._deferred = []
 
     # ------------------------------------------------------------------ compound ops
     def _home(self, axes: dict):
@@ -539,10 +1088,18 @@ class Interpreter:
             self._linear(t, rapid=rapid)
 
 
-def simulate(text: str, kin: Kinematics, setup: JobSetup, accel: bool = True, **kw) -> Trajectory:
+def _offset_code(name: str) -> float:
+    if name.startswith("G154P"):
+        return 154.0
+    return float(name[1:]) if name[1:].isdigit() else 54.0
+
+
+def simulate(text: str, kin: Kinematics, setup: JobSetup, accel: bool = True,
+             search_paths: list[str | Path] | None = None, **kw) -> Trajectory:
     """Interpret `text`. With accel=True (default) the times include acceleration and cornering
-    (see timing.py); the feed-rate-only times are kept in `traj.t_ideal`."""
-    traj = Interpreter(kin, setup, **kw).run(text)
+    (see timing.py); the feed-rate-only times are kept in `traj.t_ideal`. `search_paths` are
+    folders searched for M98 / G65 subprograms that aren't in `text` itself."""
+    traj = Interpreter(kin, setup, search_paths=search_paths, **kw).run(text)
     if accel:
         from .timing import apply
 

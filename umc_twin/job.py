@@ -53,6 +53,8 @@ class Tool:
     holder_diameter: float = 50.0      # shorthand for a single-cylinder holder
     holder_length: float = 45.0
     name: str = ""
+    d_offset: float | None = None      # cutter-comp radius (the D register); None = the tool's radius.
+                                       # 0 when CAM already offsets the path and D holds wear only.
 
     def __post_init__(self):
         if self.type not in TOOL_TYPES:
@@ -216,7 +218,7 @@ def default_setup(kin: Kinematics) -> JobSetup:
 
 
 LENGTH_KEYS = ("length", "diameter", "flute_length", "corner_radius", "tip_diameter", "shank_diameter",
-               "holder_diameter", "holder_length")
+               "holder_diameter", "holder_length", "d_offset")
 
 
 def tool_from_dict(num: int, t: dict, scale: float = 1.0) -> Tool:

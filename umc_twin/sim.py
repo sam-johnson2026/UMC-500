@@ -68,7 +68,7 @@ def solid_payload(solid: Solid | None) -> dict | None:
 
 def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None = None,
             check_collisions: bool = True, material: bool | None = None,
-            stock_out: str | Path | None = None) -> dict:
+            stock_out: str | Path | None = None, search_paths: list | None = None) -> dict:
     """Simulate a program. material=None runs the cutting sim whenever the setup has a stock
     (unless the setup says `material: {enabled: false}`)."""
     machine = machine or load_machine()
@@ -76,7 +76,7 @@ def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None =
     setup = setup or default_setup(kin)
     result: dict = {"version": 1, "joints": list(JOINT_ORDER), "options": machine.options}
     try:
-        traj = simulate(gcode, kin, setup)
+        traj = simulate(gcode, kin, setup, search_paths=search_paths)
     except GCodeError as e:
         result["error"] = str(e)
         return result
