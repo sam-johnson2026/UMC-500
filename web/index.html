@@ -48,6 +48,7 @@
       <button role="tab" data-tab="program">Program</button>
       <button role="tab" data-tab="live">Live</button>
       <button role="tab" data-tab="machine">Machine</button>
+      <button role="tab" data-tab="calibrate">Calibrate</button>
     </nav>
 
     <section class="tab card" id="tab-jog">
@@ -117,6 +118,36 @@
       <label class="row-inline"><input type="checkbox" id="chk-guarding"> show enclosure, doors and pendant</label>
       <label class="row-inline"><input type="checkbox" id="chk-path" checked> show toolpath</label>
       <label class="row-inline"><input type="checkbox" id="chk-floor" checked> show floor grid</label>
+      <div class="row"><button id="btn-save-options">Save as my machine</button><span id="options-status" class="sub"></span></div>
+    </section>
+    <section class="tab card hidden" id="tab-calibrate">
+      <p class="hint" style="margin-top:0">Measurements from the real machine. They go into <code>config/calibration.yaml</code>,
+        on top of the CAD model. Fill in what you have and leave the rest blank.</p>
+      <label class="row">Units
+        <select id="cal-units"><option value="in">inch</option><option value="mm">mm</option></select></label>
+      <h3>1 · Spindle height</h3>
+      <p class="hint">Home the machine, B0. Measure spindle nose to platter top.</p>
+      <label class="row">Nose → platter <input type="number" id="cal-nose" step="0.001"></label>
+      <p class="hint">Better: copy settings 255 / 256 / 257 (MRZP) from the control. <span id="cal-mrzp-est"></span></p>
+      <div class="row">
+        <input type="number" id="cal-mrzp-x" step="0.0001" placeholder="255 X" aria-label="Setting 255 MRZP X">
+        <input type="number" id="cal-mrzp-y" step="0.0001" placeholder="256 Y" aria-label="Setting 256 MRZP Y">
+        <input type="number" id="cal-mrzp-z" step="0.0001" placeholder="257 Z" aria-label="Setting 257 MRZP Z">
+      </div>
+      <h3>2 · Rotary directions</h3>
+      <label class="row">Jog B+ at home: platter face turns
+        <select id="cal-b"><option value="">not checked</option><option value="right">right (+X)</option><option value="left">left (−X)</option></select></label>
+      <label class="row">Jog C+, looking down: table turns
+        <select id="cal-c"><option value="">not checked</option><option value="cw">clockwise</option><option value="ccw">counter-clockwise</option></select></label>
+      <h3>3 · Rates (from the machine parameters)</h3>
+      <label class="row">B max speed <input type="number" id="cal-brapid" step="1"> °/min</label>
+      <label class="row">C max speed <input type="number" id="cal-crapid" step="1"> °/min</label>
+      <label class="row">Tool change <input type="number" id="cal-tc" step="0.1"> s</label>
+      <div class="row">
+        <button id="btn-cal-preview">Preview</button>
+        <button id="btn-cal-save" class="primary">Save</button>
+      </div>
+      <pre id="cal-out" class="mono sub" style="white-space:pre-wrap"></pre>
     </section>
   </aside>
 </main>

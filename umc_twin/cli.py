@@ -83,6 +83,40 @@ def cmd_info(args):
     return 0
 
 
+def cmd_calibrate(args):
+    from .calibration import calibrate
+
+    inputs = {"units": args.units}
+    if args.nose_to_platter is not None:
+        inputs["nose_to_platter"] = args.nose_to_platter
+    if args.mrzp:
+        inputs["mrzp"] = args.mrzp
+    for key in ("b_dir", "c_dir"):
+        if getattr(args, key):
+            inputs[key.replace("dir", "direction")] = getattr(args, key)
+    rapid = {k: v for k, v in (("B", args.b_rapid), ("C", args.c_rapid)) if v}
+    if rapid:
+        inputs["rotary_rapid"] = rapid
+    if args.tc_time is not None:
+        inputs["tool_change_time"] = args.tc_time
+    if args.option:
+        inputs["options"] = _options(args.option)
+    if len(inputs) == 1 and not args.show:
+        print("nothing to calibrate -- pass a measurement (see --help), or --show")
+        return 1
+    result = calibrate(save=not (args.dry_run or args.show), **inputs)
+    for n in result["notes"]:
+        print(n)
+    s = result["summary"]
+    print(f"nose to platter at home: {s['nose_to_platter_at_home_mm']:.2f} mm "
+          f"({s['nose_to_platter_at_home_mm'] / 25.4:.3f} in)")
+    print("MRZP (settings 255-257): X {:.3f} Y {:.3f} Z {:.3f} mm  =  {:.4f} {:.4f} {:.4f} in".format(
+        *s["mrzp_mm"], *s["mrzp_in"]))
+    print(f"B axis {s['b_axis']}  C axis {s['c_axis']}  options {s['options']}")
+    print("saved config/calibration.yaml" if result["saved"] else "(not saved)")
+    return 0
+
+
 def cmd_refresh_manifest(args):
     from .manifest import MANIFEST, refresh_manifest
 
@@ -128,6 +162,21 @@ def main(argv=None):
     p = sub.add_parser("info", help="print the machine definition")
     p.add_argument("--option", action="append", metavar="KEY=VALUE")
     p.set_defaults(func=cmd_info)
+
+    p = sub.add_parser("calibrate", help="record measurements from the machine in config/calibration.yaml")
+    p.add_argument("--units", choices=["mm", "in"], default="mm", help="units of the lengths you enter")
+    p.add_argument("--nose-to-platter", type=float, help="Z home, B0: spindle nose to platter top")
+    p.add_argument("--mrzp", type=float, nargs=3, metavar=("S255", "S256", "S257"),
+                   help="Haas settings 255/256/257 (MRZP X, Y, Z) as shown on the control")
+    p.add_argument("--b-dir", choices=["right", "left"], help="which way the platter face turns on B+ at home")
+    p.add_argument("--c-dir", choices=["cw", "ccw"], help="C+ table rotation seen from above")
+    p.add_argument("--b-rapid", type=float, help="B max speed, deg/min")
+    p.add_argument("--c-rapid", type=float, help="C max speed, deg/min")
+    p.add_argument("--tc-time", type=float, help="tool change time, s")
+    p.add_argument("--option", action="append", metavar="KEY=VALUE", help="machine option, e.g. spindle=hsk")
+    p.add_argument("--dry-run", action="store_true", help="show the result without saving")
+    p.add_argument("--show", action="store_true", help="show the current calibration")
+    p.set_defaults(func=cmd_calibrate)
 
     p = sub.add_parser("refresh-manifest", help="copy config/umc500.yaml into web/assets/machine.json")
     p.set_defaults(func=cmd_refresh_manifest)

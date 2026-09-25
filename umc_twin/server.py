@@ -44,6 +44,10 @@ def make_handler(live: LiveSource | None):
         def do_GET(self):
             if self.path.split("?")[0] == "/assets/machine.json":
                 return self._json(current_manifest())  # always reflects config/umc500.yaml
+            if self.path == "/api/calibration":
+                from .calibration import summary
+                return self._json({"summary": summary(load_machine()),
+                                   "cad_estimate": summary(load_machine(calibration=None))})
             if self.path == "/api/status":
                 return self._json({"live_source": live.name if live else None})
             if self.path == "/api/live":
@@ -65,6 +69,8 @@ def make_handler(live: LiveSource | None):
             return super().do_GET()
 
         def do_POST(self):
+            if self.path == "/api/calibrate":
+                return self._calibrate()
             if self.path != "/api/simulate":
                 return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
             try:
@@ -82,6 +88,14 @@ def make_handler(live: LiveSource | None):
                 self._json(result)
             except Exception as e:  # report to the UI rather than dropping the connection
                 self._json({"error": f"{type(e).__name__}: {e}"}, HTTPStatus.BAD_REQUEST)
+
+        def _calibrate(self):
+            from .calibration import CalibrationError, calibrate
+            try:
+                req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                self._json(calibrate(save=bool(req.pop("save", False)), **req))
+            except (CalibrationError, TypeError, ValueError) as e:
+                self._json({"error": str(e)}, HTTPStatus.BAD_REQUEST)
 
     return Handler
 

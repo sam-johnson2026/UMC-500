@@ -459,6 +459,65 @@ function disconnectLive() {
   $('btn-live').textContent = 'Connect';
 }
 
+// ---------------------------------------------------------------- calibration
+function calInputs() {
+  const num = (id) => { const v = $(id).value.trim(); return v === '' ? null : Number(v); };
+  const inputs = { units: $('cal-units').value };
+  if (num('cal-nose') != null) inputs.nose_to_platter = num('cal-nose');
+  const m = ['cal-mrzp-x', 'cal-mrzp-y', 'cal-mrzp-z'].map(num);
+  if (m.every((v) => v != null)) inputs.mrzp = m;
+  if ($('cal-b').value) inputs.b_direction = $('cal-b').value;
+  if ($('cal-c').value) inputs.c_direction = $('cal-c').value;
+  const rapid = {};
+  if (num('cal-brapid')) rapid.B = num('cal-brapid');
+  if (num('cal-crapid')) rapid.C = num('cal-crapid');
+  if (Object.keys(rapid).length) inputs.rotary_rapid = rapid;
+  if (num('cal-tc') != null) inputs.tool_change_time = num('cal-tc');
+  return inputs;
+}
+function cliFor(inputs) {
+  const a = [`python -m umc_twin calibrate --units ${inputs.units}`];
+  if (inputs.nose_to_platter != null) a.push(`--nose-to-platter ${inputs.nose_to_platter}`);
+  if (inputs.mrzp) a.push(`--mrzp ${inputs.mrzp.join(' ')}`);
+  if (inputs.b_direction) a.push(`--b-dir ${inputs.b_direction}`);
+  if (inputs.c_direction) a.push(`--c-dir ${inputs.c_direction}`);
+  if (inputs.rotary_rapid?.B) a.push(`--b-rapid ${inputs.rotary_rapid.B}`);
+  if (inputs.rotary_rapid?.C) a.push(`--c-rapid ${inputs.rotary_rapid.C}`);
+  if (inputs.tool_change_time != null) a.push(`--tc-time ${inputs.tool_change_time}`);
+  return a.join(' ');
+}
+async function runCalibration(save) {
+  const inputs = calInputs();
+  if (!S.server) {
+    $('cal-out').textContent = `Saving needs the local server. Or run:\n\n${cliFor(inputs)}`;
+    return;
+  }
+  const res = await (await fetch('api/calibrate', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...inputs, save }),
+  })).json();
+  if (res.error) { $('cal-out').textContent = `Error: ${res.error}`; return; }
+  const s = res.summary;
+  $('cal-out').textContent = [...res.notes,
+    `nose → platter at home: ${s.nose_to_platter_at_home_mm.toFixed(2)} mm (${(s.nose_to_platter_at_home_mm / 25.4).toFixed(3)} in)`,
+    `MRZP: ${s.mrzp_in.map((v) => v.toFixed(4)).join(' / ')} in`,
+    save ? 'Saved. Reloading the model…' : 'Preview only. Save to apply.'].join('\n');
+  if (save) setTimeout(() => location.reload(), 1200);
+}
+async function loadCalibrationInfo() {
+  if (!S.server) return;
+  const info = await (await fetch('api/calibration')).json();
+  const est = info.cad_estimate.mrzp_in.map((v) => v.toFixed(4)).join(' / ');
+  $('cal-mrzp-est').textContent = `The CAD predicts about ${est} in.`;
+  if (info.summary.calibrated) $('cal-out').textContent = `Calibrated: nose → platter ${info.summary.nose_to_platter_at_home_mm.toFixed(2)} mm, MRZP ${info.summary.mrzp_in.map((v) => v.toFixed(4)).join(' / ')} in`;
+}
+async function saveOptions() {
+  if (!S.server) { $('options-status').textContent = 'needs the local server'; return; }
+  const res = await (await fetch('api/calibrate', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ options: S.options, save: true }),
+  })).json();
+  $('options-status').textContent = res.error ? `Error: ${res.error}` : 'saved to config/calibration.yaml';
+}
+
 // ---------------------------------------------------------------- wiring
 function selectTab(name) {
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
@@ -500,6 +559,9 @@ $('btn-play').addEventListener('click', () => {
 $('speed').addEventListener('change', (e) => { S.speed = Number(e.target.value); });
 $('scrub').addEventListener('input', (e) => { if (S.result) seek((Number(e.target.value) / 1000) * S.result.summary.duration_s); });
 $('btn-live').addEventListener('click', () => (S.live ? disconnectLive() : connectLive()));
+$('btn-cal-preview').addEventListener('click', () => runCalibration(false));
+$('btn-cal-save').addEventListener('click', () => runCalibration(true));
+$('btn-save-options').addEventListener('click', saveOptions);
 
 let last = performance.now();
 function frame(now) {
@@ -525,6 +587,7 @@ function frame(now) {
   $('server-status').textContent = S.server ? 'server connected' : 'static';
   $('server-status').classList.toggle('ok', S.server);
   await loadMachine();
+  loadCalibrationInfo();
   const params = new URLSearchParams(location.search);
   if (params.get('example')) loadExample(params.get('example'));
   window.__twin = { S, applyPose, seek, setCam, loadExample, selectTab };  // handy from the console
