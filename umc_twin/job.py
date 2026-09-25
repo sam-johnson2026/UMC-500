@@ -153,17 +153,18 @@ def _dedupe(pts):
 @dataclass
 class Solid:
     """Something on the table: the stock, a fixture, or the finished part."""
-    type: str = "box"                  # box | cylinder | mesh
+    type: str = "box"                  # box | cylinder | mesh | vise
     size: list[float] = field(default_factory=lambda: [100.0, 100.0, 50.0])  # box: x,y,z / cyl: d,h
     position: list[float] = field(default_factory=lambda: [0.0, 0.0, -50.8])
     name: str = "stock"
     file: str | None = None            # mesh: path (resolved)
     rotation: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
     file_scale: float = 1.0            # mesh units -> mm
+    params: dict = field(default_factory=dict)  # vise: model, opening, body, jaw
 
     @property
     def height(self) -> float:
-        if self.type == "mesh":
+        if self.type in ("mesh", "vise"):
             b = self.mesh.bounds
             return float(b[1][2] - b[0][2])
         return self.size[2] if self.type == "box" else self.size[1]
@@ -182,6 +183,8 @@ class Solid:
             T[:3, 3] = self.position
             mesh.apply_transform(T)
             return mesh
+        if self.type == "vise":
+            return vise_mesh(self.params, self.position, self.rotation)
         if self.type == "cylinder":
             mesh = trimesh.creation.cylinder(radius=self.size[0] / 2, height=self.size[1], sections=64)
         else:
@@ -191,6 +194,44 @@ class Solid:
 
 
 Stock = Solid  # backwards-compatible name
+
+# Generic vise envelopes (mm): body [length along the jaw travel, jaw width, height to the jaw
+# floor], jaw [thickness, height above the floor], and the largest opening. Close enough for
+# collision checking; give your own numbers under `body:` / `jaw:` for your vise.
+VISE_MODELS = {
+    "5axis": {"body": [280.0, 125.0, 110.0], "jaw": [30.0, 30.0], "max_opening": 180.0},
+    "6in": {"body": [420.0, 152.0, 100.0], "jaw": [40.0, 45.0], "max_opening": 220.0},
+}
+
+
+def vise_params(p: dict) -> dict:
+    model = VISE_MODELS[p.get("model", "5axis")]
+    body = [float(v) for v in p.get("body", model["body"])]
+    jaw = [float(v) for v in p.get("jaw", model["jaw"])]
+    opening = float(p.get("opening", 100.0))
+    if opening > p.get("max_opening", model["max_opening"]):
+        raise ValueError(f"vise opening {opening:g} mm is more than this vise opens")
+    return {"body": body, "jaw": jaw, "opening": opening}
+
+
+def vise_mesh(p: dict, position, rotation):
+    """Body plus two jaws (clamping along local X), bottom-centre at `position`, turned by `rotation`."""
+    import trimesh
+
+    v = vise_params(p)
+    (L, W, H), (jt, jh), gap = v["body"], v["jaw"], v["opening"]
+    body = trimesh.creation.box(extents=[L, W, H])
+    body.apply_translation([0, 0, H / 2])
+    parts = [body]
+    for side in (-1, 1):
+        jaw = trimesh.creation.box(extents=[jt, W, jh])
+        jaw.apply_translation([side * (gap / 2 + jt / 2), 0, H + jh / 2])
+        parts.append(jaw)
+    mesh = trimesh.util.concatenate(parts)
+    T = trimesh.transformations.euler_matrix(*np.radians(rotation), axes="sxyz")
+    T[:3, 3] = position
+    mesh.apply_transform(T)
+    return mesh
 
 
 @dataclass
@@ -268,6 +309,18 @@ def setup_from_dict(raw: dict, kin: Kinematics, base_dir: Path = Path(".")) -> J
                          position=[float(v) * scale for v in s.get("position", [0.0, 0.0, 0.0])],
                          rotation=[float(v) for v in s.get("rotation", [0.0, 0.0, 0.0])],
                          file_scale=25.4 if file_units in ("in", "inch") else 1.0, size=[])
+        if s.get("type") == "vise":
+            params = {k: v for k, v in s.items() if k in ("model", "opening", "body", "jaw", "max_opening")}
+            for k in ("opening", "max_opening"):
+                if k in params:
+                    params[k] = float(params[k]) * scale
+            for k in ("body", "jaw"):
+                if k in params:
+                    params[k] = [float(v) * scale for v in params[k]]
+            vise_params(params)  # validate early
+            return Solid(type="vise", name=s.get("name", default_name), size=[], params=params,
+                         position=[float(v) * scale for v in s.get("position", [0.0, 0.0, top_z / scale])],
+                         rotation=[float(v) for v in s.get("rotation", [0.0, 0.0, 0.0])])
         return Solid(
             type=s.get("type", "box"),
             size=[float(v) * scale for v in s["size"]],

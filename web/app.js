@@ -228,7 +228,7 @@ function b64(str, Type) {
 }
 function solidMesh(s, color, opacity, wire = false) {
   const mat = new THREE.MeshStandardMaterial({ color, transparent: opacity < 1, opacity, roughness: 0.7, metalness: 0.1, wireframe: wire, depthWrite: opacity >= 1 });
-  if (s.type === 'mesh') {
+  if (s.mesh) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(b64(s.mesh.v, Float32Array), 3));
     g.setIndex(new THREE.BufferAttribute(b64(s.mesh.f, Uint32Array), 1));

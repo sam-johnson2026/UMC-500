@@ -60,9 +60,10 @@ def solid_payload(solid: Solid | None) -> dict | None:
     if solid is None:
         return None
     d = asdict(solid)
-    if solid.type == "mesh":
+    if solid.type not in ("box", "cylinder"):
         d["mesh"] = mesh_payload(solid.mesh)
-        d["file"] = Path(solid.file).name
+        if solid.file:
+            d["file"] = Path(solid.file).name
     return d
 
 

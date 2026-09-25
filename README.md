@@ -87,10 +87,19 @@ work_offsets:
   G54: {table_point: [0, 0, -0.8]}               # a point in the table frame, or X/Y/Z machine values
 stock: {type: box, size: [100, 80, 50], position: [0, 0, -50.8]}     # or {file: stock.stl, ...}
 fixtures:
-  - {name: vise, file: fixtures/vise.stl, position: [0, 0, -50.8], rotation: [0, 0, 90]}
+  - {name: vise, type: vise, model: 5axis, opening: 60, position: [0, 0, -50.8], rotation: [0, 0, 90]}
+  - {name: plate, file: fixtures/plate.stl, position: [0, 0, -50.8]}
 part: {file: part.stl, position: [0, 0, -50.8]}  # finished part -> gouge check (optional)
 material: {name: aluminum_6061, resolution: 0.5} # cutting energy for the load estimate; voxel size (mm)
 ```
+
+Vises (`type: vise`) come in two generic envelopes, `5axis` (a 125 mm self-centering vise) and `6in`
+(a 6″ machine vise). Set `opening` to the jaw gap, or give your own `body: [length, width, height]` and
+`jaw: [thickness, height]`. The jaw floor is `height` above `position`.
+
+**Multi-operation jobs:** `simulate op1.nc --stock-out op1.stl` writes the machined part. Use it as the next
+operation's stock with `stock: {file: op1.stl, rotation: [180, 0, 0], position: [...]}`. To sit a part
+flipped about X on the platter, shift Z by `2 × (−50.8) + part height`.
 
 Tool types are `flat`, `ball`, `bull`, `drill`, `spot` and `chamfer`. For cutter compensation, D uses the
 tool's radius unless the tool sets `d_offset`. Use `d_offset: 0` when CAM already offsets the path and D holds
