@@ -83,11 +83,14 @@ def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None =
 
     if material is None:
         material = setup.stock is not None and setup.material.get("enabled", True)
-    mat = None
+    mat = load = None
     if material and setup.stock is not None:
         from .material import simulate_material, surface_mesh, viewer_payload
 
         mat = simulate_material(traj, kin, setup)
+        from .physics import spindle_load
+
+        load = spindle_load(traj, mat, setup, machine.raw["spindle"])
         if stock_out:
             surface_mesh(mat.grid.material, mat.grid.origin, mat.grid.res).export(str(stock_out))
 
@@ -129,6 +132,7 @@ def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None =
             "removed_per_sample": r3(mat.removed_per_sample),
             "grid": viewer_payload(mat),
         },
+        "spindle_load": load,
         "program": gcode.splitlines(),
     })
     return result
@@ -149,6 +153,13 @@ def format_report(result: dict) -> str:
         lines.append(f"material     {m['removed_volume_mm3'] / 1000:.1f} cm3 removed of {m['stock_volume_mm3'] / 1000:.1f} "
                      f"(voxel {m['resolution_mm']:.2f} mm); {len(m['issues']) or 'no'} cutting issues")
         for it in m["issues"][:20]:
+            lines.append(f"  line {it['line']:5d}  t={it['t']:8.2f}s  {it['kind']}: {it['detail']}")
+    sl = result.get("spindle_load")
+    if sl:
+        p = sl["peak"]
+        lines.append(f"spindle      peak {p['load_pct']:.0f}% load, {p['power_kw']:.2f} kW, {p['torque_nm']:.1f} Nm, "
+                     f"MRR {p['mrr_cm3_min']:.1f} cm3/min ({sl['material']}, estimate)")
+        for it in sl["issues"]:
             lines.append(f"  line {it['line']:5d}  t={it['t']:8.2f}s  {it['kind']}: {it['detail']}")
     for key, title in (("limits", "travel limits"), ("collisions", "collisions"), ("warnings", "warnings")):
         items = result[key]

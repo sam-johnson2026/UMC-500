@@ -37,7 +37,8 @@ def cmd_simulate(args):
         Path(args.out).write_text(json.dumps(result))
         print(f"trajectory written to {args.out} (open it in the viewer)")
     bad = "error" in result or result["limits"] or result["collisions"] or (
-        result.get("material") and result["material"]["issues"])
+        result.get("material") and result["material"]["issues"]) or (
+        result.get("spindle_load") and result["spindle_load"]["issues"])
     return 1 if bad and args.strict else 0
 
 

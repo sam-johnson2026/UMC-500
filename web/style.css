@@ -112,3 +112,11 @@ textarea {
   #panel { width: 100%; border-left: none; border-top: 1px solid var(--border); padding: 12px 16px 24px; }
   #cams { left: 12px; right: auto; top: auto; bottom: 12px; }
 }
+
+#load-fig { margin: 10px 0 0; }
+#load-fig figcaption { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+#load-fig figcaption .sub { display: block; font-weight: 400; margin: 0; }
+#load-wrap { position: relative; }
+#load-chart { width: 100%; height: 96px; display: block; cursor: crosshair; }
+#load-tip { position: absolute; top: 0; pointer-events: none; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 4px; padding: 3px 6px; font-size: 11.5px; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.12); }

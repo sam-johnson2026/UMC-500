@@ -275,6 +275,87 @@ function buildJob(result) {
   refreshVisibility();
 }
 
+// ---------------------------------------------------------------- spindle load chart
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+let loadHover = null;
+function drawLoad() {
+  const sl = S.result?.spindle_load;
+  const cv = $('load-chart');
+  if (!sl || cv.offsetParent === null) return;
+  const dpr = Math.min(devicePixelRatio, 2);
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const pad = { l: 30, r: 4, t: 6, b: 14 };
+  const vals = sl.load_pct, n = vals.length, dur = S.result.summary.duration_s;
+  // scale to the data (labelled axis keeps small loads honest); the rated line shows once in range
+  const peak = Math.max(...vals.filter(Number.isFinite), 0);
+  const step = [5, 10, 20, 25, 50, 100, 200].find((st) => st * 2 >= peak * 1.15) || 250;
+  const ymax = step * 2;
+  const x = (tt) => pad.l + (tt / Math.max(dur, 1e-9)) * (W - pad.l - pad.r);
+  const y = (v) => pad.t + (1 - v / ymax) * (H - pad.t - pad.b);
+  ctx.font = '10px system-ui, sans-serif';
+  ctx.fillStyle = css('--muted');
+  ctx.strokeStyle = css('--border');
+  ctx.lineWidth = 1;
+  for (const v of [0, step, 2 * step]) {                // recessive grid
+    ctx.beginPath(); ctx.moveTo(pad.l, y(v) + 0.5); ctx.lineTo(W - pad.r, y(v) + 0.5); ctx.stroke();
+    ctx.fillText(`${v}%`, 2, y(v) + 3);
+  }
+  if (ymax >= 100) {                                    // rated power reference
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(pad.l, y(100) + 0.5); ctx.lineTo(W - pad.r, y(100) + 0.5); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillText('rated', W - pad.r - 30, y(100) + 11);
+  }
+  ctx.strokeStyle = css('--accent');                    // the series
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const px = x((i + 0.5) * sl.bin_s), py = y(Math.min(vals[i], ymax));
+    if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+  }
+  ctx.stroke();
+  ctx.strokeStyle = css('--text');                      // playhead
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x(S.time) + 0.5, pad.t); ctx.lineTo(x(S.time) + 0.5, H - pad.b); ctx.stroke();
+  if (loadHover != null) {                              // crosshair
+    ctx.strokeStyle = css('--muted');
+    ctx.setLineDash([2, 2]);
+    ctx.beginPath(); ctx.moveTo(loadHover + 0.5, pad.t); ctx.lineTo(loadHover + 0.5, H - pad.b); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  cv._map = { x0: pad.l, x1: W - pad.r, dur };
+}
+function loadAt(px) {
+  const m = $('load-chart')._map, sl = S.result.spindle_load;
+  const tt = Math.min(Math.max((px - m.x0) / (m.x1 - m.x0), 0), 1) * m.dur;
+  const i = Math.min(Math.floor(tt / sl.bin_s), sl.load_pct.length - 1);
+  return { tt, i };
+}
+$('load-chart').addEventListener('mousemove', (e) => {
+  if (!S.result?.spindle_load) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  loadHover = e.clientX - r.left;
+  const { tt, i } = loadAt(loadHover);
+  const sl = S.result.spindle_load;
+  const tip = $('load-tip');
+  tip.innerHTML = `<b>${sl.load_pct[i].toFixed(0)}%</b> · ${sl.power_kw[i].toFixed(2)} kW · ${sl.torque_nm[i].toFixed(1)} Nm<br>` +
+    `<span class="sub">${fmtTime(tt)} · MRR ${(sl.mrr_mm3_s[i] * 0.06).toFixed(1)} cm³/min</span>`;
+  tip.classList.remove('hidden');
+  tip.style.left = `${Math.min(loadHover + 8, r.width - tip.offsetWidth)}px`;
+  drawLoad();
+});
+$('load-chart').addEventListener('mouseleave', () => { loadHover = null; $('load-tip').classList.add('hidden'); drawLoad(); });
+$('load-chart').addEventListener('click', (e) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  S.playing = false; $('btn-play').textContent = '▶';
+  seek(loadAt(e.clientX - r.left).tt);
+});
+
 // ---------------------------------------------------------------- machined stock (voxels)
 // The cutting sim sends the voxel grid plus the time each voxel was cut, so the stock can be
 // shown at any moment: scrub the timeline and watch the part being machined.
@@ -428,6 +509,9 @@ function loadResult(result) {
   $('summary').textContent = `Cycle ${fmtTime(s.duration_s)} · cutting ${fmtTime(s.cutting_s)} · rapid ${fmtTime(s.rapid_s)} · ` +
     `${s.tool_changes} tool change${s.tool_changes === 1 ? '' : 's'}`;
   renderIssues(result);
+  const sl = result.spindle_load;
+  $('load-fig').classList.toggle('hidden', !sl);
+  if (sl) $('load-peak').textContent = `peak ${sl.peak.load_pct.toFixed(0)}% · ${sl.peak.power_kw.toFixed(1)} kW · ${sl.material} (estimate)`;
   S.listingStart = -1;
   seek(0);
   selectTab('program');
@@ -438,12 +522,14 @@ function renderIssues(r) {
   const ul = $('issues');
   const items = [
     ...r.collisions.map((c) => ({ cls: 'collision', t: c.t, line: c.line, text: c.kind === 'rapid_into_stock' ? `rapid into stock (${c.a})` : `${c.a} × ${c.b}`, parts: [c.a, c.b] })),
+    ...(r.material?.issues || []).map((m) => ({ cls: m.kind === 'gouge' || m.kind === 'rapid_into_material' ? 'collision' : 'limit', t: m.t, line: m.line, text: m.detail })),
+    ...(r.spindle_load?.issues || []).map((m) => ({ cls: 'limit', t: m.t, line: m.line, text: m.detail })),
     ...r.limits.map((l) => ({ cls: 'limit', t: l.t, line: l.line, text: l.message })),
     ...r.warnings.map((w) => ({ cls: 'warn', t: null, line: w.line, text: w.message })),
   ].sort((a, b) => (a.t ?? 1e9) - (b.t ?? 1e9));
   ul.innerHTML = '';
   if (!items.length) {
-    ul.innerHTML = `<li class="none">No collisions, over-travel or warnings${r.collision_checked === false ? ' (collision check off)' : ''}</li>`;
+    ul.innerHTML = `<li class="none">No collisions, over-travel, cutting issues or warnings${r.collision_checked === false ? ' (collision check off)' : ''}</li>`;
     return;
   }
   for (const it of items) {
@@ -499,6 +585,7 @@ function seek(t) {
   stockAt(S.time);
   showLine(r.line[k]);
   $('time').textContent = `${fmtTime(S.time)} / ${fmtTime(r.summary.duration_s)}`;
+  drawLoad();
   if (document.activeElement !== $('scrub')) $('scrub').value = Math.round((S.time / Math.max(r.summary.duration_s, 1e-9)) * 1000);
 }
 

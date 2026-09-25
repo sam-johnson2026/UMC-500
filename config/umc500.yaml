@@ -93,6 +93,12 @@ spindle:
   # Tool lengths (H offsets) are measured from this point.
   gauge_point: [252.5, 204.7, 210.48]
   direction: [0, 0, -1]            # tool points down
+  # Drive ratings for the load estimate (physics.py). UMC-500SS spec-sheet values -- VERIFY for
+  # your spindle (40-taper vs HSK, 12k vs 15k): power available = min(max_power, max_torque x w).
+  max_rpm: 15000
+  max_power_kw: 22.4               # 30 hp peak
+  max_torque_nm: 122.0             # 90 ft-lbf peak
+  efficiency: 0.8                  # spindle drive + transmission
 
 table:
   link: C

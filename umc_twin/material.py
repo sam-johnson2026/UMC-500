@@ -49,6 +49,9 @@ class MaterialResult:
     removed_per_sample: np.ndarray             # mm^3 removed during the motion into sample k
     issues: list[MaterialIssue] = field(default_factory=list)
     target: np.ndarray | None = None           # finished-part occupancy, when a part model is given
+    cut_times: np.ndarray | None = None        # time of every cutting sub-step ...
+    cut_volumes: np.ndarray | None = None      # ... and the volume it removed (mm^3)
+    cut_spans: np.ndarray | None = None        # ... over this many seconds before cut_times
 
     def summary(self) -> dict:
         g = self.grid
@@ -176,6 +179,9 @@ class MaterialSim:
                 issues.append(MaterialIssue(tt, traj.line[k], kind, detail, vol))
 
         g = self.grid
+        cut_t: list[float] = []
+        cut_v: list[float] = []
+        cut_s: list[float] = []
         for k in range(1, len(t)):
             tool_no = traj.tool[k]
             if tool_no == 0:
@@ -188,13 +194,19 @@ class MaterialSim:
             spindle_off = abs(traj.spindle[k]) < 1e-9
             # shank/holder contact needs far coarser spacing than cutting: every ~BODY_STEP mm
             every = max(1, int(BODY_STEP / self.step))
+            prev_f = 0.0
             for i, (f, tip, axis) in enumerate(poses):
+                span = float((t[k] - t[k - 1]) * (f - prev_f))
+                prev_f = f
                 tt = float(t[k - 1] + (t[k] - t[k - 1]) * f)
                 check_body = (i % every == every - 1) or i == len(poses) - 1
                 cut_n, body_hit, gouge_n = self._apply(tip, axis, tool, tt, check_body)
                 if cut_n:
                     vol = cut_n * self.voxel_volume
                     removed[k] += vol
+                    cut_t.append(tt)
+                    cut_v.append(vol)
+                    cut_s.append(span)
                     if rapid:
                         report("rapid_into_material", k, tt, f"T{tool_no} rapid through material", vol)
                     elif spindle_off:
@@ -205,7 +217,8 @@ class MaterialSim:
                 if gouge_n:
                     report("gouge", k, tt, f"T{tool_no} cut into the finished part",
                            gouge_n * self.voxel_volume)
-        return MaterialResult(g, removed, sorted(issues, key=lambda i: i.t), self.target)
+        return MaterialResult(g, removed, sorted(issues, key=lambda i: i.t), self.target,
+                              np.array(cut_t), np.array(cut_v), np.array(cut_s))
 
     def _substeps(self, q0, q1, tool: Tool):
         """(fraction, tip, axis) poses along a segment, spaced <= self.step at the tip.

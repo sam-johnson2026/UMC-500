@@ -94,6 +94,11 @@
         </div>
         <input type="range" id="scrub" min="0" max="1000" value="0" step="1" aria-label="Timeline">
         <div id="summary" class="sub"></div>
+        <figure id="load-fig" class="hidden">
+          <figcaption><span>Predicted spindle load</span> <span id="load-peak" class="sub"></span></figcaption>
+          <div id="load-wrap"><canvas id="load-chart" role="img" aria-label="Predicted spindle load over the program"></canvas>
+            <div id="load-tip" class="hidden"></div></div>
+        </figure>
         <h3>Issues</h3>
         <ul id="issues"></ul>
         <h3>Program</h3>
