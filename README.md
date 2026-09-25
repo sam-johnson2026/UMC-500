@@ -8,8 +8,12 @@ What it does:
 
 - **Moves like the machine.** X/Y/Z on the spindle, B (tilt) and C (rotary) on the table, in Haas machine
   coordinates, with travel limits.
-- **Runs G-code.** Haas-flavoured interpreter: G0–G3, work offsets, tool length, drill cycles, G28/G53, and
-  5-axis **TCPC (G234)** and **DWO (G254)**.
+- **Runs G-code.** Haas-flavoured interpreter:
+  - G0–G3, work offsets, tool length, drill cycles, G28/G53;
+  - 5-axis **TCPC (G234)** and **DWO (G254)**;
+  - **cutter compensation (G41/G42)**, G68 rotation, G10;
+  - **subprograms** (M97/M98/M99, G65);
+  - **macros**: variables, expressions, IF/GOTO/WHILE and system variables.
 - **Realistic cycle times.** A look-ahead planner adds acceleration, cornering and curve-speed limits on
   top of the programmed feeds.
 - **Cuts the part.** A voxel material-removal sim shows the part being machined and flags:
@@ -21,8 +25,10 @@ What it does:
   and holder against the trunnion, platter, base, stock and fixtures).
 - **Predicts spindle load.** Material removal rate × the work material's cutting energy, set against the
   spindle's power curve, gives load %, torque and cutting force over the program.
-- **Talks to the machine.** An MTConnect client (Haas NGC controls can serve MTConnect) drives the live view;
-  runs can be recorded and replayed.
+- **Talks to the machine.** An MTConnect client (Haas NGC controls can serve MTConnect) drives the live view.
+  Runs can be recorded, replayed, and **compared against the simulation** (time, position and spindle load
+  per line).
+- **Pre-flight checks a folder of programs** and writes a pass/warn/fail HTML report.
 - **Calibrates to your machine.** Tape-measure or MRZP (settings 255–257) measurements, axis directions,
   rates and options go into a calibration overlay.
 - **Shows it all in 3D** in the browser: jog, playback with the part being cut, toolpath, load chart,
@@ -43,7 +49,7 @@ python -m umc_twin simulate examples/crash_demo.nc --setup examples/setup_demo.y
 # 3D viewer + simulation API on http://127.0.0.1:8000
 python -m umc_twin serve
 
-pytest                                  # 66 tests
+pytest                                  # 86 tests
 ```
 
 More commands (`python -m umc_twin --help`):
@@ -55,6 +61,9 @@ More commands (`python -m umc_twin --help`):
 | `calibrate --nose-to-platter … --mrzp … --b-dir … --c-dir …` | Record measurements from the machine (see below) |
 | `mtconnect-probe URL` | What the twin would read from an MTConnect agent, and how it mapped it |
 | `record --mtconnect URL --out run.jsonl` | Record the machine; replay with `serve --replay-log run.jsonl` |
+| `compare PROG --setup JOB --recording run.jsonl` | Recorded run vs simulation: time, position deviation and spindle load per line |
+| `synth-recording PROG --setup JOB --out fake.jsonl` | A fake run (slower, offset, heavier) to try `compare` without the machine |
+| `check FILES_OR_FOLDERS --setup JOB --html report.html` | Pre-flight a batch of programs; `prog.yaml` next to `prog.nc` is used for that program |
 | `fake-agent --replay PROG --setup JOB` | A fake MTConnect agent serving a simulated run, for testing without the machine |
 | `tools FILE` | Tools as the twin understands them, from a Fusion 360 / CSV library or a job setup |
 | `pose X Y Z B C --tool N` | Tool position, limits and collisions at one machine position |
@@ -83,7 +92,9 @@ part: {file: part.stl, position: [0, 0, -50.8]}  # finished part -> gouge check 
 material: {name: aluminum_6061, resolution: 0.5} # cutting energy for the load estimate; voxel size (mm)
 ```
 
-Tool types are `flat`, `ball`, `bull`, `drill`, `spot` and `chamfer`. Mesh files can be STL, OBJ, GLB or
+Tool types are `flat`, `ball`, `bull`, `drill`, `spot` and `chamfer`. For cutter compensation, D uses the
+tool's radius unless the tool sets `d_offset`. Use `d_offset: 0` when CAM already offsets the path and D holds
+wear only. Mesh files can be STL, OBJ, GLB or
 3MF, or STEP with `pip install cadquery-ocp`. The work materials are listed in `umc_twin/physics.py`;
 you can also give `specific_energy` in J/mm³ directly.
 
@@ -106,17 +117,18 @@ job setup YAML (tools, offsets, stock, fixtures, part, material)
 | `config/umc500.yaml` | Machine definition: frames, joints, limits, rates, accelerations, spindle ratings, parts, options. **Start here.** |
 | `config/calibration.yaml` | Your machine's measurements (written by `calibrate`; not present until you calibrate) |
 | `umc_twin/kinematics.py` | Forward kinematics (single and batched), TCP inverse, work-offset helpers |
-| `umc_twin/gcode.py` | G-code interpreter → `Trajectory` |
+| `umc_twin/gcode.py`, `macro.py` | G-code interpreter → `Trajectory`; macro variables and expressions |
 | `umc_twin/timing.py` | Look-ahead planner: acceleration and cornering |
 | `umc_twin/material.py` | Voxel cutting sim, cutting checks, machined-part mesh |
 | `umc_twin/physics.py` | Spindle power / load / torque / cutting force |
 | `umc_twin/collision.py` | Mesh collision checks along a trajectory |
 | `umc_twin/job.py`, `toollib.py`, `cadio.py` | Job setup, tool shapes and libraries, mesh file loading |
 | `umc_twin/calibration.py` | Measurements → calibration overlay |
+| `umc_twin/compare.py`, `check.py` | Commanded vs actual comparison; batch pre-flight report |
 | `umc_twin/live.py`, `mtconnect.py`, `mtconnect_agent.py` | Live sources, MTConnect client, fake agent, recording |
 | `umc_twin/server.py` | Viewer + API (`/api/simulate`, `/api/live`, `/api/calibrate`). Standard library only |
 | `web/` | Viewer (three.js vendored, so it runs offline on a shop PC) |
-| `examples/` | Demo (facing, helical pocket, 3+2 holes, TCPC chamfer), crash demo, job setup |
+| `examples/` | 5-axis demo (facing, helical pocket, 3+2 holes, TCPC chamfer), macro + cutter comp demo, crash demo, job setup |
 
 ## Frames and conventions
 
@@ -156,8 +168,18 @@ python -m umc_twin serve --mtconnect http://<agent-host>:<port> --log runs/today
 The client picks the actual machine positions of the X/Y/Z and B/C axes, the spindle speed and load, and the
 program, line, tool and execution state from the agent's `/probe`. If it guesses wrong, pin data item ids
 under `live.mtconnect` in the config. It was tested end to end against the bundled fake agent; it has not
-yet been tried on this machine's agent. Once live data flows, the next step is comparing the machine's
-spindle load and cycle time against the sim's predictions.
+yet been tried on this machine's agent. Once live data flows, record a run and compare it with the simulation:
+
+```bash
+python -m umc_twin record --mtconnect http://<agent-host>:<port> --out runs/part12.jsonl
+python -m umc_twin compare part12.nc --setup part12.yaml --recording runs/part12.jsonl
+```
+
+The comparison lists where the real machine was slower or faster than the sim (tune accelerations and corner
+time from that), how far it strayed from the simulated path (a wrong offset or calibration shows up here),
+and a factor for `material.specific_energy` that makes the predicted spindle load match. The factor is a
+line-averaged fit, good to roughly ±10%. It assumes the control reports program line numbers; if it
+reports N-numbers, the report says no lines matched.
 
 ## Limitations
 
@@ -169,8 +191,9 @@ spindle load and cycle time against the sim's predictions.
   without the check noticing on the way in, because paths are checked every 2 mm / 1°.
 - **Timing.** The planner is a generic look-ahead model, not Haas's servo control. G187 smoothing isn't
   modelled.
-- **G-code not supported yet** (the interpreter warns and skips): macros (`#` variables), subprograms
-  (M97/M98), cutter compensation (G41/G42), G68 rotation, and G10.
+- **G-code.** The interpreter warns and skips what it doesn't know. Cutter compensation works in the G17
+  plane only; an inside corner next to an arc is approximated (with a warning). Probing (G31) and tool wear
+  offsets are not simulated.
 - **Tool library import.** The Fusion 360 import follows Fusion's export format but hasn't been checked
   against this shop's export yet. When a library tool has no holder, a default 45 mm holder is assumed.
   Measured H offsets in `tools:` should win.

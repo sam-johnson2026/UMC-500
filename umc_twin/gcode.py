@@ -229,9 +229,14 @@ class Interpreter:
         return p
 
     def _resync(self):
-        """Mode change (offset, TLO, TCPC): machine stays put, program position is re-derived."""
-        self.s.p = self._prog_from_q(self.s.q)
-        self.prog_pos = self.s.p.copy()
+        """Mode change (offset, TLO, TCPC): machine stays put, program position is re-derived.
+        With cutter comp on, the programmed (uncompensated) position moves by the same amount."""
+        new = self._prog_from_q(self.s.q)
+        if getattr(self, "_pending", None) is None and self.s.comp == 40:
+            self.prog_pos = new.copy()
+        else:
+            self.prog_pos = self.prog_pos + (new - self.s.p)
+        self.s.p = new
 
     # ------------------------------------------------------------------ recording
     def _record(self, line: int, motion: int, dt: float):

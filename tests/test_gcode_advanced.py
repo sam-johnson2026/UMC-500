@@ -215,3 +215,18 @@ G40 G1 X-30. Y0"""
     assert radii.min() == pytest.approx(25.0, abs=1e-6) and radii.max() == pytest.approx(25.0, abs=1e-6)
     assert tips[:, 2].min() == pytest.approx(TOP - 2)                  # the Z move ran, in order
     assert not tr.warnings
+
+
+def test_comp_survives_an_offset_change_with_incremental_moves(kin, setup):
+    """A mode change while G41 is on must not swap the programmed position for the offset one."""
+    prog = """G0 X-40. Y-20. Z5.
+G1 Z-2. F500.
+G41 D1 G1 X-20. Y-20.
+G91 Y40.
+G43 H1
+X40.
+G90 G40 G1 X40. Y40."""
+    tr = run(kin, setup, prog)
+    top = [t for t, ln in zip(tr.tip, tr.line) if ln == 9]
+    # the second side runs along y = 20 + 5 (left of travel), from x = -20 to x = 20
+    np.testing.assert_allclose(top[-1][:2], [20.0, 25.0], atol=1e-6)
