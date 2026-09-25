@@ -85,6 +85,12 @@ joints:
 motion:
   corner_time: 0.015
 
+# Servo model for the contour-error estimate (umc_twin/servo.py): position-loop gain Kv (1/s) per
+# axis and velocity feed-forward (0..1). Placeholders -- tune from a ballbar test or `compare`.
+servo:
+  kv: {X: 40.0, Y: 40.0, Z: 40.0, B: 40.0, C: 40.0}
+  feedforward: 0.8
+
 max_cutting_feed: 16510.0          # mm/min (650 ipm) -- VERIFY
 
 spindle:

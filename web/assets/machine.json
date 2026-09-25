@@ -126,6 +126,16 @@
   "motion": {
    "corner_time": 0.015
   },
+  "servo": {
+   "kv": {
+    "X": 40.0,
+    "Y": 40.0,
+    "Z": 40.0,
+    "B": 40.0,
+    "C": 40.0
+   },
+   "feedforward": 0.8
+  },
   "max_cutting_feed": 16510.0,
   "spindle": {
    "link": "Z",

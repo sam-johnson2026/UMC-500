@@ -65,6 +65,7 @@ class Trajectory:
     events: list[dict] = field(default_factory=list)
     warnings: list[dict] = field(default_factory=list)
     t_ideal: list[float] | None = None                    # feed-rate-only times, before re-timing
+    profile: dict | None = None                           # per-segment speed profile (timing.py)
 
     @property
     def duration(self) -> float:

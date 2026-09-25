@@ -23,6 +23,9 @@ What it does:
   - gouges, when you give it the finished-part model.
 - **Catches crashes before the machine does.** Checks every pose against the real CAD geometry (head, tool
   and holder against the trunnion, platter, base, stock and fixtures).
+- **Estimates contour error.** A servo-lag model (position-loop gain and feed-forward per axis) shows where
+  corners and tight arcs pull the tool off the programmed path while it's cutting. Set
+  `material.tolerance` and the pre-flight check warns on lines that exceed it.
 - **Predicts spindle load.** Material removal rate × the work material's cutting energy, set against the
   spindle's power curve, gives load %, torque and cutting force over the program.
 - **Talks to the machine.** An MTConnect client (Haas NGC controls can serve MTConnect) drives the live view.
@@ -49,7 +52,7 @@ python -m umc_twin simulate examples/crash_demo.nc --setup examples/setup_demo.y
 # 3D viewer + simulation API on http://127.0.0.1:8000
 python -m umc_twin serve
 
-pytest                                  # 86 tests
+pytest                                  # 95 tests
 ```
 
 More commands (`python -m umc_twin --help`):
@@ -130,6 +133,7 @@ job setup YAML (tools, offsets, stock, fixtures, part, material)
 | `umc_twin/timing.py` | Look-ahead planner: acceleration and cornering |
 | `umc_twin/material.py` | Voxel cutting sim, cutting checks, machined-part mesh |
 | `umc_twin/physics.py` | Spindle power / load / torque / cutting force |
+| `umc_twin/servo.py` | Servo lag → contour error (tune `servo:` in the config from a ballbar test) |
 | `umc_twin/collision.py` | Mesh collision checks along a trajectory |
 | `umc_twin/job.py`, `toollib.py`, `cadio.py` | Job setup, tool shapes and libraries, mesh file loading |
 | `umc_twin/calibration.py` | Measurements → calibration overlay |
@@ -198,8 +202,9 @@ reports N-numbers, the report says no lines matched.
   chip thinning, and runout. It is an estimate until tuned against the machine's reported load.
 - **Collisions.** Mesh collisions are detected at surface contact. A body can't sit entirely inside another
   without the check noticing on the way in, because paths are checked every 2 mm / 1°.
-- **Timing.** The planner is a generic look-ahead model, not Haas's servo control. G187 smoothing isn't
-  modelled.
+- **Timing and servo.** The planner is a generic look-ahead model, not Haas's servo control. G187 smoothing
+  isn't modelled. The contour-error model is a first-order position loop with feed-forward; its gains are
+  placeholders until checked with a ballbar test.
 - **G-code.** The interpreter warns and skips what it doesn't know. Cutter compensation works in the G17
   plane only; an inside corner next to an arc is approximated (with a warning). Probing (G31) and tool wear
   offsets are not simulated.

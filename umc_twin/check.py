@@ -4,7 +4,8 @@ Every program is simulated (motion, cutting, spindle load, collisions, travel li
 graded:
 
   fail  error, over-travel, collision, gouge, rapid into material, spindle overload
-  warn  interpreter warnings, shank/holder contact, cutting with the spindle stopped, over-speed
+  warn  interpreter warnings, shank/holder contact, cutting with the spindle stopped, over-speed,
+        estimated contour error above the job's `material.tolerance` (when given)
   pass  nothing to report
 
 A job setup next to a program with the same name (part12.nc + part12.yaml) is used for that
@@ -58,6 +59,9 @@ def grade(result: dict) -> tuple[str, list[str]]:
         bump("fail")
         what = "rapid into stock" if c["kind"] == "rapid_into_stock" else f"collision {c['a']} x {c['b']}"
         notes.append(f"line {c['line']}: {what}")
+    for it in (result.get("servo") or {}).get("issues", []):
+        bump("warn")
+        notes.append(f"line {it['line']}: {it['detail']}")
     for group in ("material", "spindle_load"):
         for it in (result.get(group) or {}).get("issues", []):
             bump("fail" if it["kind"] in FAIL_KINDS else "warn")

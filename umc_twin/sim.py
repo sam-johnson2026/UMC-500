@@ -126,6 +126,17 @@ def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None =
         if stock_out:
             surface_mesh(mat.grid.material, mat.grid.origin, mat.grid.res).export(str(stock_out))
 
+    from .servo import contour_error
+
+    lengths = {n: setup.tool(n).length for n in set(traj.tool)}
+    servo = contour_error(traj, kin, lengths, cut_times=mat.cut_times if mat is not None else None)
+    tol = setup.material.get("tolerance")
+    servo["tolerance_mm"] = tol
+    servo["issues"] = [] if tol is None else [
+        {"line": d["line"], "kind": "contour_error",
+         "detail": f"estimated contour error {d['max_contour_mm'] * 1000:.0f} um > tolerance {tol * 1000:.0f} um"}
+        for d in servo["per_line"] if d["max_contour_mm"] > tol][:20]
+
     collisions = []
     if check_collisions:
         from .collision import CollisionChecker
@@ -168,6 +179,7 @@ def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None =
             "grid": viewer_payload(mat),
         },
         "spindle_load": load,
+        "servo": servo,
         "program": gcode.splitlines(),
     })
     return result
@@ -196,6 +208,14 @@ def format_report(result: dict) -> str:
                      f"MRR {p['mrr_cm3_min']:.1f} cm3/min ({sl['material']}, estimate)")
         for it in sl["issues"]:
             lines.append(f"  line {it['line']:5d}  t={it['t']:8.2f}s  {it['kind']}: {it['detail']}")
+    sv = result.get("servo")
+    if sv:
+        where = f" on line {sv['at']['line']}" if sv.get("at") else ""
+        scope = " while cutting" if sv.get("in_material_only") else ""
+        lines.append(f"servo        max contour error{scope} {sv['max_contour_mm'] * 1000:.1f} um{where} "
+                     f"(Kv {sv['kv'][0]:g}/s, feed-forward {sv['feedforward']:g}; estimate)")
+        for it in sv["issues"][:10]:
+            lines.append(f"  line {it['line']:5d}  {it['detail']}")
     for key, title in (("limits", "travel limits"), ("collisions", "collisions"), ("warnings", "warnings")):
         items = result[key]
         if key == "collisions" and not result["collision_checked"]:
