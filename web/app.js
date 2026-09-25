@@ -583,6 +583,12 @@ function seek(t) {
   }
   applyPose(q);
   stockAt(S.time);
+  if (S.playing) {                      // light up parts while the playhead passes a collision
+    const hits = r.collisions.filter((c) => Math.abs(c.t - S.time) < 0.25 * Math.max(S.speed, 1));
+    const ids = hits.flatMap((c) => [c.a, c.b]);
+    if (ids.length) highlight(ids);
+    else if (S.highlight.size) { highlight([]); setMode('PROGRAM'); }
+  }
   showLine(r.line[k]);
   $('time').textContent = `${fmtTime(S.time)} / ${fmtTime(r.summary.duration_s)}`;
   drawLoad();
