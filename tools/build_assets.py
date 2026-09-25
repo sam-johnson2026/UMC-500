@@ -23,11 +23,10 @@ import numpy as np
 import trimesh
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from umc_twin.cadio import triangulate  # noqa: E402
 from umc_twin.config import DEFAULT_CONFIG, REPO_ROOT, load_machine  # noqa: E402
 
-from OCP.BRep import BRep_Tool  # noqa: E402
 from OCP.BRepGProp import BRepGProp  # noqa: E402
-from OCP.BRepMesh import BRepMesh_IncrementalMesh  # noqa: E402
 from OCP.GProp import GProp_GProps  # noqa: E402
 from OCP.IFSelect import IFSelect_RetDone  # noqa: E402
 from OCP.STEPCAFControl import STEPCAFControl_Reader  # noqa: E402
@@ -35,10 +34,6 @@ from OCP.TCollection import TCollection_ExtendedString  # noqa: E402
 from OCP.TDataStd import TDataStd_Name  # noqa: E402
 from OCP.TDF import TDF_ChildIterator, TDF_Label  # noqa: E402
 from OCP.TDocStd import TDocStd_Document  # noqa: E402
-from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED  # noqa: E402
-from OCP.TopExp import TopExp_Explorer  # noqa: E402
-from OCP.TopLoc import TopLoc_Location  # noqa: E402
-from OCP.TopoDS import TopoDS  # noqa: E402
 from OCP.XCAFDoc import XCAFDoc_DocumentTool  # noqa: E402
 
 ASSETS = REPO_ROOT / "web" / "assets"
@@ -75,34 +70,6 @@ def read_step_components(step_path: Path) -> dict:
         st.GetReferredShape_s(comp, ref)
         out[name(ref)] = st.GetShape_s(comp)  # already carries the component placement
     return out
-
-
-def triangulate(shape, lin_defl: float, ang_defl: float) -> tuple[np.ndarray, np.ndarray]:
-    """Tessellate a shape. Vertices are kept per B-rep face so normals stay crisp at edges."""
-    BRepMesh_IncrementalMesh(shape, lin_defl, False, ang_defl, True)
-    verts, faces, offset = [], [], 0
-    exp = TopExp_Explorer(shape, TopAbs_FACE)
-    while exp.More():
-        face = TopoDS.Face(exp.Current())
-        loc = TopLoc_Location()
-        tri = BRep_Tool.Triangulation_s(face, loc)
-        if tri is not None:
-            trsf = loc.Transformation()
-            n = tri.NbNodes()
-            pts = np.empty((n, 3))
-            for i in range(n):
-                p = tri.Node(i + 1).Transformed(trsf)
-                pts[i] = (p.X(), p.Y(), p.Z())
-            t = np.array([tri.Triangle(i + 1).Get() for i in range(tri.NbTriangles())]) - 1
-            if face.Orientation() == TopAbs_REVERSED:
-                t = t[:, ::-1]
-            verts.append(pts)
-            faces.append(t + offset)
-            offset += n
-        exp.Next()
-    if not verts:
-        return np.zeros((0, 3)), np.zeros((0, 3), dtype=int)
-    return np.vstack(verts), np.vstack(faces)
 
 
 def mass_properties(shape, rotation: np.ndarray, pivot: np.ndarray, density: float) -> dict:
@@ -155,7 +122,7 @@ def main() -> None:
     ap.add_argument("--only", help="comma-separated part ids to rebuild")
     args = ap.parse_args()
 
-    machine = load_machine(args.config)
+    machine = load_machine(args.config, calibration=None)
     cad = machine.raw["cad"]
     rotation = np.array(cad["rotation"], dtype=float)
     pivot = np.array(cad["pivot"], dtype=float)

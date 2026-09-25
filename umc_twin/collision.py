@@ -20,7 +20,7 @@ import trimesh
 
 from .config import REPO_ROOT, Machine
 from .gcode import MOTION, Trajectory
-from .job import JobSetup, Stock, Tool
+from .job import JobSetup, Solid, Tool
 from .kinematics import Kinematics
 
 ASSETS = REPO_ROOT / "web" / "assets"
@@ -47,34 +47,23 @@ def load_part_mesh(part_id: str) -> trimesh.Trimesh:
 
 
 def tool_meshes(kin: Kinematics, tool: Tool) -> dict[str, trimesh.Trimesh]:
-    """Holder + cutter cylinders in the world frame at the CAD pose (hanging off the gauge point)."""
-    d = kin.tool_dir
+    """Tool body (flutes + shank) and holder, revolved from their profiles, in the world frame at
+    the CAD pose (tip at gauge point + length along the tool direction)."""
+    up = -kin.tool_dir
+    T = trimesh.geometry.align_vectors([0.0, 0.0, 1.0], up)
+    T[:3, 3] = kin.gauge + kin.tool_dir * tool.length   # profile heights are measured from the tip
     out = {}
-    hl = min(tool.holder_length, tool.length - 1.0)
-    if hl > 0:
-        holder = trimesh.creation.cylinder(radius=tool.holder_diameter / 2, height=hl, sections=24)
-        out["holder"] = _place_along(holder, kin.gauge, d, 0.0, hl)
-    cut = trimesh.creation.cylinder(radius=tool.diameter / 2, height=tool.length - max(hl, 0), sections=24)
-    out["cutter"] = _place_along(cut, kin.gauge, d, max(hl, 0), tool.length)
+    for name, profile in (("cutter", tool.profile()), ("holder", tool.holder_profile())):
+        if len(profile) < 3:
+            continue
+        mesh = trimesh.creation.revolve(np.array(profile), sections=32)
+        mesh.apply_transform(T)
+        out[name] = mesh
     return out
 
 
-def stock_mesh(stock: Stock) -> trimesh.Trimesh:
-    if stock.type == "cylinder":
-        mesh = trimesh.creation.cylinder(radius=stock.size[0] / 2, height=stock.size[1], sections=48)
-    else:
-        mesh = trimesh.creation.box(extents=stock.size)
-    mesh.apply_translation(np.array(stock.position) + [0, 0, stock.height / 2])
-    return mesh
-
-
-def _place_along(mesh, origin, direction, start, end):
-    """trimesh cylinders are centred on the origin along +Z; move one to span [start, end] along direction."""
-    z = np.array([0.0, 0.0, 1.0])
-    T = trimesh.geometry.align_vectors(z, direction)
-    T[:3, 3] = origin + direction * (start + end) / 2
-    mesh.apply_transform(T)
-    return mesh
+def stock_mesh(solid: Solid) -> trimesh.Trimesh:
+    return solid.mesh.copy()
 
 
 class CollisionChecker:

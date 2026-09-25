@@ -1,0 +1,15 @@
+{
+  "data": [
+    {"type": "flat end mill", "unit": "millimeters", "description": "12mm 3FL carbide",
+     "geometry": {"DC": 12, "LCF": 26, "LB": 45, "OAL": 83, "SFDM": 12, "NOF": 3},
+     "holder": {"segments": [{"height": 20, "lower-diameter": 24, "upper-diameter": 32}, {"height": 40, "lower-diameter": 50, "upper-diameter": 50}]},
+     "post-process": {"number": 5, "length-offset": 5}},
+    {"type": "ball end mill", "unit": "inches", "description": "1/4 ball",
+     "geometry": {"DC": 0.25, "LCF": 0.75, "LB": 1.5},
+     "post-process": {"number": 6}},
+    {"type": "chamfer mill", "unit": "millimeters", "description": "90deg chamfer",
+     "geometry": {"DC": 12, "TA": 45, "LB": 40},
+     "post-process": {"number": 7}},
+    {"type": "holder", "description": "not a tool"}
+  ]
+}

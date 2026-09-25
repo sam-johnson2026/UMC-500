@@ -1,13 +1,19 @@
 # Job setup for examples/demo_5axis.nc
 units: mm
 
-# Tool table. length = gauge line to tip (what the H offset holds). Holder = simple cylinder
-# used for collision checks, so give a realistic diameter / stick-out.
+# Tool table. length = gauge line to tip (what the H offset holds).
+# type: flat | ball | bull | drill | spot | chamfer. Holder: [height, lower dia, upper dia] segments
+# from the tool end up to the gauge line (or holder_diameter + holder_length for a plain cylinder).
+# A Fusion 360 / CSV library can be pulled in with `tool_library: file` (see umc_twin/toollib.py).
 tools:
-  1: {name: "50 mm face mill",      length: 110.0, diameter: 50.0, holder_diameter: 63.0, holder_length: 55.0}
-  2: {name: "10 mm endmill",        length: 90.0,  diameter: 10.0, flute_length: 25.0, holder_diameter: 32.0, holder_length: 50.0}
-  3: {name: "6.8 mm drill",         length: 120.0, diameter: 6.8,  holder_diameter: 25.0, holder_length: 55.0}
-  4: {name: "12 mm 90deg chamfer",  length: 95.0,  diameter: 12.0, holder_diameter: 32.0, holder_length: 50.0}
+  1: {name: "50 mm face mill", type: flat, length: 110.0, diameter: 50.0, flute_length: 8.0,
+      holder: [[25, 40, 40], [30, 63, 63]]}
+  2: {name: "10 mm endmill", type: flat, length: 90.0, diameter: 10.0, flute_length: 25.0,
+      holder: [[35, 20, 32], [15, 50, 50]]}
+  3: {name: "6.8 mm drill", type: drill, length: 120.0, diameter: 6.8, flute_length: 40.0,
+      holder_diameter: 25.0, holder_length: 55.0}
+  4: {name: "12 mm 90deg chamfer", type: chamfer, length: 95.0, diameter: 12.0, flute_length: 8.0,
+      holder: [[35, 20, 32], [15, 50, 50]]}
 
 # Part zero. table_point is in the table frame (origin = B/C pivot, platter top at Z -50.8).
 # Stock (100 dia x 50) sits on a 60 tall riser: bottom at 9.2, top face at 59.2.

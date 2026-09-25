@@ -1,13 +1,15 @@
 """High-level entry point: G-code in, checked trajectory + report out (JSON-ready)."""
 from __future__ import annotations
 
+import base64
 from dataclasses import asdict
+from pathlib import Path
 
 import numpy as np
 
 from .config import JOINT_ORDER, Machine, load_machine
 from .gcode import MOTION, GCodeError, Trajectory, simulate
-from .job import JobSetup, default_setup
+from .job import JobSetup, Solid, Tool, default_setup
 from .kinematics import Kinematics
 
 
@@ -39,6 +41,29 @@ def summarise(traj: Trajectory) -> dict:
         "tool_changes": sum(1 for e in traj.events if e["type"] == "toolchange"),
         "samples": len(t),
     }
+
+
+def tool_payload(tool: Tool) -> dict:
+    d = asdict(tool)
+    d["profile"] = tool.profile()
+    d["holder_profile"] = tool.holder_profile()
+    return d
+
+
+def mesh_payload(mesh) -> dict:
+    """Compact mesh for the viewer: base64 float32 vertices / uint32 faces."""
+    return {"v": base64.b64encode(np.asarray(mesh.vertices, dtype="<f4").tobytes()).decode(),
+            "f": base64.b64encode(np.asarray(mesh.faces, dtype="<u4").tobytes()).decode()}
+
+
+def solid_payload(solid: Solid | None) -> dict | None:
+    if solid is None:
+        return None
+    d = asdict(solid)
+    if solid.type == "mesh":
+        d["mesh"] = mesh_payload(solid.mesh)
+        d["file"] = Path(solid.file).name
+    return d
 
 
 def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None = None,
@@ -75,10 +100,11 @@ def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None =
         "collisions": collisions,
         "collision_checked": check_collisions,
         "setup": {
-            "tools": {n: asdict(t) for n, t in setup.tools.items()},
-            "default_tool": asdict(setup.default_tool),
-            "stock": asdict(setup.stock) if setup.stock else None,
-            "fixtures": [asdict(f) for f in setup.fixtures],
+            "tools": {n: tool_payload(t) for n, t in setup.tools.items()},
+            "default_tool": tool_payload(setup.default_tool),
+            "stock": solid_payload(setup.stock),
+            "fixtures": [solid_payload(f) for f in setup.fixtures],
+            "part": solid_payload(setup.part),
             "work_offsets": {k: r3(v) for k, v in setup.work_offsets.items()},
         },
         "program": gcode.splitlines(),

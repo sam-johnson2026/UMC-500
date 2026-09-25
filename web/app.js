@@ -179,6 +179,17 @@ function buildTool(tool) {
   toolGroup.userData.length = L;
   if (!toolGroup.parent) links[S.cfg.spindle.link].add(toolGroup);
   if (L <= 0) return;
+  if (tool.profile) {
+    // profiles are (radius, height above tip); the group origin is the gauge point, tip at -L
+    for (const [prof, mat] of [[tool.profile, toolMat], [tool.holder_profile, holderMat]]) {
+      if (!prof || prof.length < 3) continue;
+      const g = new THREE.LatheGeometry(prof.map(([r, h]) => new THREE.Vector2(r, h - L)), 40);
+      g.rotateX(Math.PI / 2);   // lathe axis Y -> Z
+      g.computeVertexNormals();
+      toolGroup.add(new THREE.Mesh(g, mat));
+    }
+    return;
+  }
   const hl = Math.min(tool.holder_length ?? 45, L - 1);
   if (hl > 0) toolGroup.add(cylinderAlong((tool.holder_diameter ?? 50) / 2, 0, hl, holderMat));
   toolGroup.add(cylinderAlong((tool.diameter ?? 10) / 2, Math.max(hl, 0), L, toolMat));
@@ -187,11 +198,25 @@ function buildTool(tool) {
 const jobGroup = new THREE.Group();   // stock, fixtures, toolpath -- rides on the table
 let pathObj = null;
 const tipMarker = new THREE.Mesh(new THREE.SphereGeometry(2.5, 16, 12), new THREE.MeshBasicMaterial({ color: 0xe11d48 }));
-function solidMesh(s, color, opacity) {
+function b64(str, Type) {
+  const bin = atob(str);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Type(bytes.buffer);
+}
+function solidMesh(s, color, opacity, wire = false) {
+  const mat = new THREE.MeshStandardMaterial({ color, transparent: opacity < 1, opacity, roughness: 0.7, metalness: 0.1, wireframe: wire, depthWrite: opacity >= 1 });
+  if (s.type === 'mesh') {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(b64(s.mesh.v, Float32Array), 3));
+    g.setIndex(new THREE.BufferAttribute(b64(s.mesh.f, Uint32Array), 1));
+    g.computeVertexNormals();
+    return new THREE.Mesh(g, mat);   // already in the table frame
+  }
   const [a, b, c] = s.size;
   const g = s.type === 'cylinder' ? new THREE.CylinderGeometry(a / 2, a / 2, b, 48).rotateX(Math.PI / 2) : new THREE.BoxGeometry(a, b, c);
   const h = s.type === 'cylinder' ? b : c;
-  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color, transparent: opacity < 1, opacity, roughness: 0.7, metalness: 0.1 }));
+  const m = new THREE.Mesh(g, mat);
   m.position.set(s.position[0], s.position[1], s.position[2] + h / 2);
   return m;
 }
@@ -200,7 +225,16 @@ function buildJob(result) {
   if (!jobGroup.parent) links[S.cfg.table.link].add(jobGroup);
   const setup = result.setup || {};
   for (const f of setup.fixtures || []) jobGroup.add(solidMesh(f, 0x6b7280, 1));
-  if (setup.stock) jobGroup.add(solidMesh(setup.stock, 0x9ecae1, 0.45));
+  if (setup.part) {
+    const p = solidMesh(setup.part, 0x22c55e, 0.35);
+    p.name = 'part';
+    jobGroup.add(p);
+  }
+  if (setup.stock) {
+    const st = solidMesh(setup.stock, 0x9ecae1, 0.45);
+    st.name = 'stock';
+    jobGroup.add(st);
+  }
 
   // toolpath in the table frame: feed = teal, rapid = orange; skip tool-change legs
   const pos = [], col = [];

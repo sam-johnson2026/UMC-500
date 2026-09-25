@@ -117,6 +117,22 @@ def cmd_calibrate(args):
     return 0
 
 
+def cmd_tools(args):
+    """Show the tools as the twin understands them (from a library file or a job setup)."""
+    if args.file.endswith((".yaml", ".yml")):
+        machine = load_machine()
+        tools = load_setup(args.file, Kinematics(machine)).tools
+    else:
+        from .toollib import load_tool_library
+
+        tools = load_tool_library(args.file)
+    print(f"{'T':>4} {'type':8} {'dia':>7} {'length':>8} {'flutes':>7} {'stick':>7} {'holder':>7}  name")
+    for n, t in sorted(tools.items()):
+        print(f"{n:>4} {t.type:8} {t.diameter:7.3f} {t.length:8.2f} {t.flute_length:7.2f} "
+              f"{t.stick_out:7.2f} {t.holder_diameter:7.2f}  {t.name}")
+    return 0
+
+
 def cmd_refresh_manifest(args):
     from .manifest import MANIFEST, refresh_manifest
 
@@ -177,6 +193,10 @@ def main(argv=None):
     p.add_argument("--dry-run", action="store_true", help="show the result without saving")
     p.add_argument("--show", action="store_true", help="show the current calibration")
     p.set_defaults(func=cmd_calibrate)
+
+    p = sub.add_parser("tools", help="list tools from a tool library (.json Fusion / .csv) or job setup")
+    p.add_argument("file")
+    p.set_defaults(func=cmd_tools)
 
     p = sub.add_parser("refresh-manifest", help="copy config/umc500.yaml into web/assets/machine.json")
     p.set_defaults(func=cmd_refresh_manifest)
