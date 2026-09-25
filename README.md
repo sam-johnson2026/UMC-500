@@ -52,7 +52,7 @@ python -m umc_twin simulate examples/crash_demo.nc --setup examples/setup_demo.y
 # 3D viewer + simulation API on http://127.0.0.1:8000
 python -m umc_twin serve
 
-pytest                                  # 95 tests
+pytest                                  # 99 tests
 ```
 
 More commands (`python -m umc_twin --help`):
@@ -187,6 +187,10 @@ yet been tried on this machine's agent. Once live data flows, record a run and c
 python -m umc_twin record --mtconnect http://<agent-host>:<port> --out runs/part12.jsonl
 python -m umc_twin compare part12.nc --setup part12.yaml --recording runs/part12.jsonl
 ```
+
+In the viewer, load the program, then **Compare a recording**: the actual path is drawn in red over the
+simulated one, **follow recording** plays the machine back on its real timeline, and (with the server) the
+report below appears in the panel.
 
 The comparison lists where the real machine was slower or faster than the sim (tune accelerations and corner
 time from that), how far it strayed from the simulated path (a wrong offset or calibration shows up here),

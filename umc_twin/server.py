@@ -2,6 +2,8 @@
 
     GET  /                 the viewer (web/index.html)
     POST /api/simulate     {"gcode": str, "setup": yaml str?, "options": {..}?, "collisions": bool?}
+    POST /api/compare      {"gcode": str, "setup": yaml str?, "recording": jsonl str} -> compare report
+    POST /api/calibrate    calibration inputs (see calibration.py), "save": bool
     GET  /api/live         server-sent events: MachineState at ~20 Hz from the live source
     GET  /api/status       {"live_source": name | null}
 """
@@ -71,22 +73,39 @@ def make_handler(live: LiveSource | None):
         def do_POST(self):
             if self.path == "/api/calibrate":
                 return self._calibrate()
+            if self.path == "/api/compare":
+                return self._compare()
             if self.path != "/api/simulate":
                 return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
             try:
                 req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
                 machine = load_machine(options=req.get("options") or None)
                 kin = Kinematics(machine)
-                if req.get("setup"):
-                    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
-                        f.write(req["setup"])
-                    setup = load_setup(f.name, kin)
-                    Path(f.name).unlink()
-                else:
-                    setup = default_setup(kin)
+                setup = _setup_from_text(req.get("setup"), kin)
                 result = run_job(req["gcode"], machine, setup, check_collisions=req.get("collisions", True))
                 self._json(result)
             except Exception as e:  # report to the UI rather than dropping the connection
+                self._json({"error": f"{type(e).__name__}: {e}"}, HTTPStatus.BAD_REQUEST)
+
+        def _compare(self):
+            from .compare import compare, format_report
+            from .gcode import simulate
+            try:
+                req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                machine = load_machine(options=req.get("options") or None)
+                kin = Kinematics(machine)
+                setup = _setup_from_text(req.get("setup"), kin)
+                traj = simulate(req["gcode"], kin, setup)
+                load = None
+                if setup.stock is not None:
+                    from .material import simulate_material
+                    from .physics import spindle_load
+                    load = spindle_load(traj, simulate_material(traj, kin, setup), setup, machine.raw["spindle"])
+                states = sorted((json.loads(x) for x in req["recording"].splitlines() if x.strip()),
+                                key=lambda st: st["timestamp"])
+                report = compare(traj, states, load)
+                self._json({**report, "text": format_report(report)})
+            except Exception as e:
                 self._json({"error": f"{type(e).__name__}: {e}"}, HTTPStatus.BAD_REQUEST)
 
         def _calibrate(self):
@@ -98,6 +117,17 @@ def make_handler(live: LiveSource | None):
                 self._json({"error": str(e)}, HTTPStatus.BAD_REQUEST)
 
     return Handler
+
+
+def _setup_from_text(text: str | None, kin: Kinematics):
+    if not text:
+        return default_setup(kin)
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(text)
+    try:
+        return load_setup(f.name, kin)
+    finally:
+        Path(f.name).unlink()
 
 
 def serve(port: int = 8000, live: LiveSource | None = None, host: str = "127.0.0.1"):

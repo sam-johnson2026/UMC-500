@@ -19,6 +19,7 @@ Inputs, all optional (give what you have measured):
 from __future__ import annotations
 
 import datetime as _dt
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -109,8 +110,9 @@ def compute_overlay(machine: Machine, *, units: str = "mm", nose_to_platter: flo
     return overlay, notes
 
 
-def save_overlay(overlay: dict, path: Path = DEFAULT_CALIBRATION, merge: bool = True) -> dict:
+def save_overlay(overlay: dict, path: Path | None = None, merge: bool = True) -> dict:
     """Write (merging with any existing calibration) and return the full overlay."""
+    path = Path(path) if path else DEFAULT_CALIBRATION
     existing = (yaml.safe_load(path.read_text()) or {}) if (merge and path.exists()) else {}
     full = deep_merge(existing, overlay)
     header = (f"# UMC-500 calibration overlay -- merged over config/umc500.yaml.\n"
@@ -137,15 +139,16 @@ def summary(machine: Machine) -> dict:
     }
 
 
-def calibrate(save: bool = True, path: Path = DEFAULT_CALIBRATION, **inputs) -> dict:
+def calibrate(save: bool = True, path: Path | None = None, **inputs) -> dict:
+    path = Path(path) if path else DEFAULT_CALIBRATION
     base = load_machine(calibration=None)
     overlay, notes = compute_overlay(base, **inputs)
     full = save_overlay(overlay, path) if save else deep_merge(
         (yaml.safe_load(path.read_text()) or {}) if path.exists() else {}, overlay)
-    tmp = path.with_suffix(".preview.yaml")
-    tmp.write_text(yaml.safe_dump(full))
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(yaml.safe_dump(full))
     try:
-        result = summary(load_machine(calibration=tmp))
+        result = summary(load_machine(calibration=f.name))
     finally:
-        tmp.unlink()
+        Path(f.name).unlink()
     return {"overlay": full, "notes": notes, "summary": result, "saved": save}

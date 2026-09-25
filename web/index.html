@@ -95,6 +95,12 @@
         </div>
         <input type="range" id="scrub" min="0" max="1000" value="0" step="1" aria-label="Timeline">
         <div id="summary" class="sub"></div>
+        <div class="row">
+          <label class="file">Compare a recording (.jsonl)<input type="file" id="file-rec" accept=".jsonl,.json,.txt"></label>
+          <label class="row-inline"><input type="checkbox" id="chk-follow" disabled> follow recording</label>
+        </div>
+        <div id="rec-status" class="sub"></div>
+        <pre id="cmp-report" class="mono sub hidden" style="white-space:pre-wrap"></pre>
         <figure id="load-fig" class="hidden">
           <figcaption><span>Predicted spindle load</span> <span id="load-peak" class="sub"></span></figcaption>
           <div id="load-wrap"><canvas id="load-chart" role="img" aria-label="Predicted spindle load over the program"></canvas>

@@ -328,7 +328,8 @@ function drawLoad() {
   ctx.stroke();
   ctx.strokeStyle = css('--text');                      // playhead
   ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(x(S.time) + 0.5, pad.t); ctx.lineTo(x(S.time) + 0.5, H - pad.b); ctx.stroke();
+  const tNow = S.loadTime ?? S.time;
+  ctx.beginPath(); ctx.moveTo(x(tNow) + 0.5, pad.t); ctx.lineTo(x(tNow) + 0.5, H - pad.b); ctx.stroke();
   if (loadHover != null) {                              // crosshair
     ctx.strokeStyle = css('--muted');
     ctx.setLineDash([2, 2]);
@@ -500,6 +501,13 @@ function buildOptionsUI() {
 // ---------------------------------------------------------------- program / playback
 function loadResult(result) {
   if (result.error) { $('sim-status').textContent = `Error: ${result.error}`; return; }
+  S.rec = null;
+  S.follow = false;
+  S.loadTime = null;
+  $('chk-follow').checked = false;
+  $('chk-follow').disabled = true;
+  $('rec-status').textContent = '';
+  $('cmp-report').classList.add('hidden');
   S.result = result;
   S.time = 0;
   S.lastLine = -1;
@@ -573,14 +581,40 @@ function sampleAt(t) {
   return { k: hi, f: span > 0 ? (t - T[lo]) / span : 1 };
 }
 
+// timeline length: the simulation, or the recording when following it
+const dur = () => (S.follow && S.rec ? S.rec.duration : S.result.summary.duration_s);
+
+function recordingAt(t) {
+  const R = S.rec;
+  let lo = 0, hi = R.t.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (R.t[mid] <= t) lo = mid; else hi = mid; }
+  const span = R.t[hi] - R.t[lo];
+  const f = span > 0 ? Math.min(Math.max((t - R.t[lo]) / span, 0), 1) : 0;
+  const a = R.states[lo].q, b = R.states[hi].q;
+  return { q: a.map((v, i) => v + (b[i] - v) * f), st: R.states[lo] };
+}
+
 function seek(t) {
   const r = S.result;
   if (!r) return;
-  S.time = Math.min(Math.max(t, 0), r.summary.duration_s);
-  const { k, f } = sampleAt(S.time);
-  const a = r.q[Math.max(k - 1, 0)], b = r.q[k];
-  const q = a.map((v, i) => v + (b[i] - v) * f);
-  const toolNo = r.tool[k];
+  S.time = Math.min(Math.max(t, 0), dur());
+  let simTime = S.time;
+  let q, k, lineNo, toolNo;
+  if (S.follow && S.rec) {
+    const { q: rq, st } = recordingAt(S.time);
+    q = rq;
+    lineNo = st.line;
+    toolNo = st.tool ?? 0;
+    simTime = S.time * r.summary.duration_s / Math.max(S.rec.duration, 1e-9);   // for the stock / load chart
+    k = sampleAt(simTime).k;
+  } else {
+    const at = sampleAt(S.time);
+    k = at.k;
+    const a = r.q[Math.max(k - 1, 0)], b = r.q[k];
+    q = a.map((v, i) => v + (b[i] - v) * at.f);
+    lineNo = r.line[k];
+    toolNo = r.tool[k];
+  }
   if (toolNo !== S.currentTool) {
     S.currentTool = toolNo;
     const tools = r.setup?.tools || {};
@@ -589,17 +623,18 @@ function seek(t) {
     $('tool-readout').textContent = toolNo ? `T${toolNo} ${tool.name || ''} · L ${tool.length} · Ø ${tool.diameter}` : 'No tool';
   }
   applyPose(q);
-  stockAt(S.time);
-  if (S.playing) {                      // light up parts while the playhead passes a collision
+  stockAt(simTime);
+  if (S.playing && !S.follow) {         // light up parts while the playhead passes a collision
     const hits = r.collisions.filter((c) => Math.abs(c.t - S.time) < 0.25 * Math.max(S.speed, 1));
     const ids = hits.flatMap((c) => [c.a, c.b]);
     if (ids.length) highlight(ids);
     else if (S.highlight.size) { highlight([]); setMode('PROGRAM'); }
   }
-  showLine(r.line[k]);
-  $('time').textContent = `${fmtTime(S.time)} / ${fmtTime(r.summary.duration_s)}`;
+  showLine(lineNo);
+  $('time').textContent = `${fmtTime(S.time)} / ${fmtTime(dur())}` + (S.follow && S.rec ? ' (recording)' : '');
+  S.loadTime = simTime;
   drawLoad();
-  if (document.activeElement !== $('scrub')) $('scrub').value = Math.round((S.time / Math.max(r.summary.duration_s, 1e-9)) * 1000);
+  if (document.activeElement !== $('scrub')) $('scrub').value = Math.round((S.time / Math.max(dur(), 1e-9)) * 1000);
 }
 
 function showLine(line) {
@@ -653,6 +688,59 @@ async function loadExample(name) {
   $('sim-status').textContent = `Loaded ${name} (pre-computed; edit and Simulate to re-run)`;
   loadResult(result);
 }
+
+// ---------------------------------------------------------------- recorded run vs simulation
+const recMat = new THREE.LineBasicMaterial({ color: 0xdc2626 });
+let recLine = null;
+function tipInTable(q, L) {
+  // same chain as applyPose, without touching the scene
+  const m = (n, i) => jointMatrix(n, q[i], S.q0[i]);
+  const Ts = m('X', 0).multiply(m('Y', 1)).multiply(m('Z', 2));
+  const Tt = m('B', 3).multiply(m('C', 4));
+  const g = S.cfg.spindle.gauge_point, d = S.cfg.spindle.direction;
+  const p = new THREE.Vector3(g[0] + d[0] * L, g[1] + d[1] * L, g[2] + d[2] * L).applyMatrix4(Ts);
+  return p.applyMatrix4(Tt.invert());
+}
+async function loadRecording(file) {
+  const states = (await file.text()).split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
+    .sort((a, b) => a.timestamp - b.timestamp);
+  const run = states.filter((st) => st.line != null);
+  if (run.length < 2) { $('rec-status').textContent = 'That recording has no running program in it.'; return; }
+  const t0 = run[0].timestamp;
+  S.rec = { states: run, t: run.map((st) => st.timestamp - t0), duration: run[run.length - 1].timestamp - t0, text: null };
+  const tools = S.result.setup?.tools || {};
+  const pts = [];
+  for (const st of run) {
+    const tool = tools[st.tool] || tools[String(st.tool)];
+    const p = tipInTable(st.q, tool ? tool.length : 0);
+    pts.push(p.x, p.y, p.z);
+  }
+  if (recLine) jobGroup.remove(recLine);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  recLine = new THREE.Line(g, recMat);
+  jobGroup.add(recLine);
+  $('chk-follow').disabled = false;
+  const ratio = S.rec.duration / Math.max(S.result.summary.duration_s, 1e-9);
+  $('rec-status').textContent = `Recording: ${run.length} states, ${fmtTime(S.rec.duration)} ` +
+    `(simulated ${fmtTime(S.result.summary.duration_s)}, x${ratio.toFixed(2)}). Actual path in red.`;
+  if (S.server) {
+    const res = await (await fetch('api/compare', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gcode: $('gcode').value, setup: $('setup').value, options: S.options, recording: await file.text() }),
+    })).json();
+    $('cmp-report').textContent = res.error ? `Compare: ${res.error}` : res.text;
+    $('cmp-report').classList.remove('hidden');
+  }
+}
+$('file-rec').addEventListener('change', (e) => { if (e.target.files[0] && S.result) loadRecording(e.target.files[0]); });
+$('chk-follow').addEventListener('change', (e) => {
+  S.follow = e.target.checked;
+  S.playing = false;
+  $('btn-play').textContent = '▶';
+  seek(0);
+  setMode(S.follow ? 'RECORDING' : 'PROGRAM');
+});
 
 // ---------------------------------------------------------------- live
 function connectLive() {
@@ -771,14 +859,14 @@ $('file-json').addEventListener('change', async (e) => {
 $('btn-play').addEventListener('click', () => {
   if (!S.result) return;
   if (S.live) disconnectLive();
-  if (S.time >= S.result.summary.duration_s) S.time = 0;
+  if (S.time >= dur()) S.time = 0;
   S.playing = !S.playing;
   $('btn-play').textContent = S.playing ? '❚❚' : '▶';
   highlight([]);
   setMode('PROGRAM');
 });
 $('speed').addEventListener('change', (e) => { S.speed = Number(e.target.value); });
-$('scrub').addEventListener('input', (e) => { if (S.result) seek((Number(e.target.value) / 1000) * S.result.summary.duration_s); });
+$('scrub').addEventListener('input', (e) => { if (S.result) seek((Number(e.target.value) / 1000) * dur()); });
 $('btn-live').addEventListener('click', () => (S.live ? disconnectLive() : connectLive()));
 $('btn-cal-preview').addEventListener('click', () => runCalibration(false));
 $('btn-cal-save').addEventListener('click', () => runCalibration(true));
@@ -790,7 +878,7 @@ function frame(now) {
   last = now;
   if (S.playing && S.result) {
     seek(S.time + dt * S.speed);
-    if (S.time >= S.result.summary.duration_s) { S.playing = false; $('btn-play').textContent = '▶'; }
+    if (S.time >= dur()) { S.playing = false; $('btn-play').textContent = '▶'; }
   }
   if (S.stock?.dirty && !S.playing) remeshStock();
   controls.update();
