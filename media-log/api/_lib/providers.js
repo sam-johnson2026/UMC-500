@@ -122,27 +122,6 @@ async function openLibrary(_type, q, { fetchImpl }) {
   }));
 }
 
-/* ---------------- RAWG: games ---------------- */
-
-async function rawg(_type, q, { fetchImpl, env }) {
-  if (!env.RAWG_API_KEY) throw new Error('RAWG_API_KEY is not configured');
-  const url = new URL('https://api.rawg.io/api/games');
-  url.searchParams.set('key', env.RAWG_API_KEY);
-  url.searchParams.set('search', q);
-  url.searchParams.set('page_size', '12');
-  const data = await getJson(fetchImpl, url.toString());
-  return (data.results ?? []).map((g) => ({
-    id: String(g.id),
-    source: 'rawg',
-    title: g.name,
-    year: asInt((g.released || '').slice(0, 4)),
-    coverUrl: g.background_image ?? null,
-    total: null,
-    unit: 'percent',
-    overview: g.genres?.length ? g.genres.map((x) => x.name).slice(0, 3).join(', ') : null,
-  }));
-}
-
 /* ---------------- MangaDex: manhwa / webtoons ---------------- */
 
 async function mangadex(_type, q, { fetchImpl }) {
@@ -180,7 +159,6 @@ const BY_TYPE = {
   movie: tmdb,
   tv: tmdb,
   book: openLibrary,
-  game: rawg,
   manhwa: mangadex,
 };
 

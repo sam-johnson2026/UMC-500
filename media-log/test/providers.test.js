@@ -66,12 +66,6 @@ test('Open Library: cover URL and page total', async () => {
   assert.equal(b.unit, 'page');
 });
 
-test('RAWG: requires key, maps image and year', async () => {
-  await assert.rejects(search('game', 'zelda', { fetchImpl: json({}), env: {} }), /RAWG_API_KEY/);
-  const [g] = await search('game', 'zelda', { fetchImpl: json({ results: [{ id: 5, name: 'Zelda', released: '2017-03-03', background_image: 'bg.jpg', genres: [{ name: 'Adventure' }] }] }), env: { RAWG_API_KEY: 'k' } });
-  assert.deepEqual([g.title, g.year, g.coverUrl, g.unit], ['Zelda', 2017, 'bg.jpg', 'percent']);
-});
-
 test('MangaDex: cover from relationship, lastChapter total, Korean origin filter', async () => {
   const f = capture({ data: [{ id: 'abc', attributes: { title: { en: 'Solo Leveling' }, year: 2018, lastChapter: '200', description: { en: 'Hunter.' } }, relationships: [{ type: 'cover_art', attributes: { fileName: 'c.jpg' } }] }, { id: 'd', attributes: { title: { ja: 'X' }, lastChapter: '' }, relationships: [] }] });
   const r = await search('manhwa', 'solo', { fetchImpl: f, env: {} });
@@ -83,6 +77,7 @@ test('MangaDex: cover from relationship, lastChapter total, Korean origin filter
 });
 
 test('types without a source return nothing', async () => {
+  assert.deepEqual(await search('game', 'x', { fetchImpl: json({}), env: {} }), []);
   assert.deepEqual(await search('podcast', 'x', { fetchImpl: json({}), env: {} }), []);
 });
 

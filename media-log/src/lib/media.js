@@ -15,7 +15,7 @@ export const TYPES = [
 export const TYPE_BY_ID = Object.fromEntries(TYPES.map((t) => [t.id, t]));
 
 // Types that have a metadata search behind /api/search.
-export const SEARCHABLE = new Set(['anime', 'manga', 'light_novel', 'tv', 'movie', 'book', 'game', 'manhwa']);
+export const SEARCHABLE = new Set(['anime', 'manga', 'light_novel', 'tv', 'movie', 'book', 'manhwa']);
 
 export const STATUSES = [
   { id: 'in_progress', label: 'In progress' },
