@@ -8,7 +8,6 @@ export const TYPES = [
   { id: 'book', label: 'Books', unit: 'page' },
   { id: 'light_novel', label: 'Light Novels', unit: 'volume' },
   { id: 'podcast', label: 'Podcasts', unit: 'episode' },
-  { id: 'game', label: 'Games', unit: 'percent' },
   { id: 'youtube', label: 'YouTube / Web', unit: 'percent' },
   { id: 'other', label: 'Other', unit: 'percent' },
 ];

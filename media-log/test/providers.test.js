@@ -77,7 +77,6 @@ test('MangaDex: cover from relationship, lastChapter total, Korean origin filter
 });
 
 test('types without a source return nothing', async () => {
-  assert.deepEqual(await search('game', 'x', { fetchImpl: json({}), env: {} }), []);
   assert.deepEqual(await search('podcast', 'x', { fetchImpl: json({}), env: {} }), []);
 });
 

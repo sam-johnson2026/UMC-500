@@ -1,6 +1,6 @@
 # Media Log
 
-A personal tracker for anime, TV, movies, manga, manhwa, comics, books, light novels, podcasts, games, YouTube/web and anything else.
+A personal tracker for anime, TV, movies, manga, manhwa, comics, books, light novels, podcasts, YouTube/web and anything else.
 React + Vite frontend · Supabase (auth, Postgres, storage) · Vercel hosting with serverless functions in `/api`.
 
 ## Setup
@@ -21,7 +21,7 @@ React + Vite frontend · Supabase (auth, Postgres, storage) · Vercel hosting wi
 | Auth on the functions | `api/_lib/auth.js`: every call needs your Supabase session token |
 | Types, units, "S2 · Ep 6 / 12" formatting | `src/lib/media.js` |
 
-Search sources: AniList (anime, manga, light novels; no key), TMDB (movies, TV; per-season episode counts), Open Library (books), MangaDex (manhwa, Korean-origin). Games, comics, podcasts, YouTube/web and other are entered by hand.
+Search sources: AniList (anime, manga, light novels; no key), TMDB (movies, TV; per-season episode counts), Open Library (books), MangaDex (manhwa, Korean-origin). Comics, podcasts, YouTube/web and other are entered by hand.
 
 The recommender sends your log grouped by signal (thumbs up and down weigh the most, unrated drops are a mild negative), asks for 8 picks in a JSON schema, removes anything already in your log, keeps 6 and attaches covers from the same metadata source. Model defaults to `claude-opus-5-5`; set `ANTHROPIC_MODEL` to change it.
 

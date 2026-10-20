@@ -3,7 +3,7 @@
 export const TYPE_LABELS = {
   anime: 'anime', tv: 'TV shows', movie: 'movies', manga: 'manga', manhwa: 'manhwa/webtoons',
   comic: 'comics', book: 'books', light_novel: 'light novels', podcast: 'podcasts',
-  game: 'video games', youtube: 'YouTube/web videos', other: 'things',
+  youtube: 'YouTube/web videos', other: 'things',
 };
 
 export const norm = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();

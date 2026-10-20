@@ -3,7 +3,7 @@
 create table if not exists public.entries (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  type        text not null check (type in ('anime','tv','movie','manga','manhwa','comic','book','light_novel','podcast','game','youtube','other')),
+  type        text not null check (type in ('anime','tv','movie','manga','manhwa','comic','book','light_novel','podcast','youtube','other')),
   title       text not null check (char_length(title) between 1 and 300),
   status      text not null default 'plan_to' check (status in ('in_progress','plan_to','finished','on_hold','dropped')),
   season      integer check (season is null or season > 0),
