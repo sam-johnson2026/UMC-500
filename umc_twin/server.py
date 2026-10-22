@@ -2,7 +2,7 @@
 
     GET  /                 the viewer (web/index.html)
     POST /api/simulate     {"gcode": str, "setup": yaml str?, "options": {..}?, "collisions": bool?}
-    POST /api/compare      {"gcode": str, "setup": yaml str?, "recording": jsonl str} -> compare report
+    POST /api/compare      {"gcode": str, "setup": yaml str?, "recording": jsonl or csv str} -> compare report
     POST /api/calibrate    calibration inputs (see calibration.py), "save": bool
     GET  /api/live         server-sent events: MachineState at ~20 Hz from the live source
     GET  /api/status       {"live_source": name | null}
@@ -101,8 +101,13 @@ def make_handler(live: LiveSource | None):
                     from .material import simulate_material
                     from .physics import spindle_load
                     load = spindle_load(traj, simulate_material(traj, kin, setup), setup, machine.raw["spindle"])
-                states = sorted((json.loads(x) for x in req["recording"].splitlines() if x.strip()),
-                                key=lambda st: st["timestamp"])
+                text = req["recording"]
+                if text.lstrip().startswith("{"):
+                    states = sorted((json.loads(x) for x in text.splitlines() if x.strip()),
+                                    key=lambda st: st["timestamp"])
+                else:   # a CSV log from the shop's logger
+                    from .importers import read_csv_text
+                    states = read_csv_text(text, req.get("units", "auto"))[0]
                 report = compare(traj, states, load)
                 self._json({**report, "text": format_report(report)})
             except Exception as e:

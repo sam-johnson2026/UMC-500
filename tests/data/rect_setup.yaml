@@ -1,0 +1,6 @@
+# Stand-in setup for rect_laps.nc: G54 at the rectangle's +X/+Y corner, as the logged run suggests
+units: in
+tools:
+  1: {name: "1/2 endmill", type: flat, length: 4.0, diameter: 0.5}
+work_offsets:
+  G54: {X: -8.3018, Y: -6.4479, Z: -8.648}

@@ -68,6 +68,17 @@ def test_compare(base_url):
     assert r["cycle_time"]["ratio"] == pytest.approx(1.1, abs=0.01) and "cycle time" in r["text"]
 
 
+def test_compare_csv_log(base_url, tmp_path):
+    from test_import_log import DATA, write_log
+    m = load_machine()
+    kin = Kinematics(m)
+    text = (DATA / "rect_laps.nc").read_text()
+    write_log(tmp_path / "run.csv", simulate(text, kin, load_setup(DATA / "rect_setup.yaml", kin)), 40, 200)
+    r = post(base_url + "/api/compare", {"gcode": text, "setup": (DATA / "rect_setup.yaml").read_text(),
+                                         "recording": (tmp_path / "run.csv").read_text()})
+    assert r["alignment"] == "path" and r["cycle_time"]["ratio"] == pytest.approx(1.0, abs=0.02)
+
+
 def test_calibrate_preview_does_not_save(base_url, tmp_path, monkeypatch):
     import umc_twin.calibration as cal
     monkeypatch.setattr(cal, "DEFAULT_CALIBRATION", tmp_path / "cal.yaml")

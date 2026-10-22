@@ -226,7 +226,7 @@ def cmd_compare(args):
     from .compare import compare, format_report, load_recording
 
     traj, load = _simulate_with_load(args)
-    report = compare(traj, load_recording(args.recording), load)
+    report = compare(traj, load_recording(args.recording, args.units), load)
     print(format_report(report, top=args.top))
     if args.out:
         Path(args.out).write_text(json.dumps(report, indent=1))
@@ -261,6 +261,70 @@ def cmd_check(args):
         Path(args.json).write_text(json.dumps(rows, indent=1))
     worst = "fail" if any(r["status"] == "fail" for r in rows) else "warn" if any(r["status"] == "warn" for r in rows) else "pass"
     return 1 if worst == "fail" or (worst == "warn" and args.fail_on_warn) else 0
+
+
+def cmd_import_log(args):
+    from .importers import read_csv_log
+
+    states, info = read_csv_log(args.log, args.units)
+    Path(args.out).write_text("".join(json.dumps(st) + "\n" for st in states))
+    print(f"{info['rows']} states, {info['seconds']} s, one every {info['sample_s']} s, units {info['units']}"
+          f", programs {', '.join(info['programs']) or '-'}")
+    if not info["has_line_numbers"]:
+        print("no line numbers in this log: `compare` will match it to the program by path instead")
+    print(f"wrote {args.out}")
+    return 0
+
+
+def cmd_check_recording(args):
+    """Every logged position against the machine model: travel limits and collisions."""
+    import numpy as np
+
+    from .compare import load_recording
+
+    machine, kin, setup = _machine_and_setup(args)
+    states = load_recording(args.recording, args.units)
+    checker = None
+    if not args.no_collisions:
+        from .collision import CollisionChecker
+
+        checker = CollisionChecker(machine, kin, setup)
+    limit_hits, crash_hits, seen = [], [], set()
+    for st in states:
+        q = np.asarray(st["q"], dtype=float)
+        for msg in kin.limit_violations(q):
+            key = ("lim", msg.split("=")[0])
+            if key not in seen:
+                seen.add(key)
+                limit_hits.append((st, msg))
+        if checker is not None:
+            tool = st.get("tool") or 0
+            if args.tool is not None:
+                tool = args.tool
+            for a, b, kind in checker.check_pose(q, tool=tool if tool in setup.tools else 0):
+                key = (a, b)
+                if key not in seen:
+                    seen.add(key)
+                    crash_hits.append((st, f"{a} x {b}"))
+    t0 = states[0]["timestamp"] if states else 0
+    q = np.array([s["q"] for s in states]) if states else np.zeros((0, 5))
+    print(f"{len(states)} positions over {states[-1]['timestamp'] - t0:.0f} s" if states else "no positions")
+    if len(q):
+        lo, hi = q.min(0), q.max(0)
+        print("range (machine, mm / deg): " + "  ".join(f"{a} {l:.2f}..{h:.2f}" for a, l, h in zip("XYZBC", lo, hi)))
+    print(f"travel limits {len(limit_hits) or 'ok'}")
+    for st, msg in limit_hits:
+        print(f"  t={st['timestamp'] - t0:7.1f}s  {msg}")
+    if checker is None:
+        print("collisions   not checked")
+    else:
+        tools = {s.get('tool') for s in states} - {None}
+        missing = [t for t in tools if t not in setup.tools]
+        note = f" (no geometry for T{', T'.join(map(str, missing))} in the setup: head only)" if missing else ""
+        print(f"collisions   {len(crash_hits) or 'none'}{note}")
+        for st, what in crash_hits:
+            print(f"  t={st['timestamp'] - t0:7.1f}s  {what}")
+    return 1 if limit_hits or crash_hits else 0
 
 
 def cmd_refresh_manifest(args):
@@ -362,10 +426,25 @@ def main(argv=None):
     p = sub.add_parser("compare", help="compare a recorded run with the simulation of its program")
     p.add_argument("program")
     common(p)
-    p.add_argument("--recording", required=True, help="JSON lines from `record` or `serve --log`")
+    p.add_argument("--recording", required=True, help="JSON lines from `record` / `serve --log`, or a CSV log")
+    p.add_argument("--units", choices=["auto", "in", "mm"], default="auto", help="units of a CSV log")
     p.add_argument("--out", help="write the full report (JSON)")
     p.add_argument("--top", type=int, default=10, help="lines to list")
     p.set_defaults(func=cmd_compare)
+
+    p = sub.add_parser("import-log", help="convert a CSV machine log to the twin's recording format")
+    p.add_argument("log")
+    p.add_argument("--out", required=True)
+    p.add_argument("--units", choices=["auto", "in", "mm"], default="auto")
+    p.set_defaults(func=cmd_import_log)
+
+    p = sub.add_parser("check-recording", help="check every logged position: travel limits and collisions")
+    p.add_argument("recording", help="JSON lines or CSV log")
+    common(p)
+    p.add_argument("--units", choices=["auto", "in", "mm"], default="auto")
+    p.add_argument("--tool", type=int, help="tool number to assume (default: the logged one)")
+    p.add_argument("--no-collisions", action="store_true")
+    p.set_defaults(func=cmd_check_recording)
 
     p = sub.add_parser("synth-recording", help="make a fake recording of a program (to try `compare`)")
     p.add_argument("program")

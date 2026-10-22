@@ -701,10 +701,54 @@ function tipInTable(q, L) {
   const p = new THREE.Vector3(g[0] + d[0] * L, g[1] + d[1] * L, g[2] + d[2] * L).applyMatrix4(Ts);
   return p.applyMatrix4(Tt.invert());
 }
+// A CSV machine log (see umc_twin/importers.py, which this mirrors): positions in inches when
+// they all fit inside the travel in inches, timestamps as seconds or ISO text.
+function parseCsvLog(text) {
+  const rows = text.replace(/^\ufeff/, '').split(/\r?\n/).filter((l) => l.trim()).map((l) => l.split(','));
+  const head = rows.shift().map((h) => h.trim().toLowerCase().replace(/ /g, ''));
+  const col = (...names) => names.map((n) => head.indexOf(n)).find((i) => i >= 0) ?? -1;
+  const c = {
+    t: col('pc_time', 'timestamp', 'time', 'datetime'), x: col('x_mach', 'x_machine', 'xmach', 'x'),
+    y: col('y_mach', 'y_machine', 'ymach', 'y'), z: col('z_mach', 'z_machine', 'zmach', 'z'),
+    b: col('b_mach', 'b_machine', 'bmach', 'b'), c: col('c_mach', 'c_machine', 'cmach', 'c'),
+    tool: col('tool_in_spindle', 'tool', 'tool_number'), exec: col('execution'),
+    line: col('linenumber', 'line', 'line_number'), load: col('spindle_load_pct', 'spindle_load', 'load'),
+  };
+  if ([c.t, c.x, c.y, c.z].some((i) => i < 0)) throw new Error('no time / X / Y / Z columns in that CSV');
+  const num = (r, i) => (i >= 0 && r[i] !== undefined && r[i].trim() !== '' && !isNaN(+r[i]) ? +r[i] : null);
+  const travelIn = [20.5, 16.5, 14.5];
+  const inch = rows.every((r) => [c.x, c.y, c.z].every((i, a) => Math.abs(num(r, i) ?? 0) <= travelIn[a]));
+  const s = inch ? 25.4 : 1;
+  return rows.map((r) => ({
+    q: [num(r, c.x) * s, num(r, c.y) * s, num(r, c.z) * s, num(r, c.b) ?? 0, num(r, c.c) ?? 0],
+    timestamp: isNaN(+r[c.t]) ? Date.parse(r[c.t]) / 1000 : +r[c.t],
+    tool: num(r, c.tool), line: num(r, c.line), spindle_load: num(r, c.load),
+    execution: c.exec >= 0 ? r[c.exec] || null : null, source: 'csv',
+  }));
+}
+
+// the longest unbroken ACTIVE stretch (what follows a feed hold / reset is usually not the program)
+function mainRun(states) {
+  const runs = [];
+  let cur = [];
+  for (const st of states) {
+    if (st.execution == null || st.execution === 'ACTIVE') cur.push(st);
+    else if (cur.length) { runs.push(cur); cur = []; }
+  }
+  if (cur.length) runs.push(cur);
+  const len = (r) => r[r.length - 1].timestamp - r[0].timestamp;
+  return runs.reduce((best, r) => (!best || len(r) > len(best) ? r : best), null) || [];
+}
+
 async function loadRecording(file) {
-  const states = (await file.text()).split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
-    .sort((a, b) => a.timestamp - b.timestamp);
-  const run = states.filter((st) => st.line != null);
+  const text = await file.text();
+  let states;
+  try {
+    states = (text.trimStart().startsWith('{') ? text.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
+      : parseCsvLog(text)).sort((a, b) => a.timestamp - b.timestamp);
+  } catch (e) { $('rec-status').textContent = `Couldn't read that recording: ${e.message}`; return; }
+  const byLine = states.some((st) => st.line != null);
+  const run = byLine ? states.filter((st) => st.line != null) : mainRun(states);
   if (run.length < 2) { $('rec-status').textContent = 'That recording has no running program in it.'; return; }
   const t0 = run[0].timestamp;
   S.rec = { states: run, t: run.map((st) => st.timestamp - t0), duration: run[run.length - 1].timestamp - t0, text: null };
@@ -723,11 +767,12 @@ async function loadRecording(file) {
   $('chk-follow').disabled = false;
   const ratio = S.rec.duration / Math.max(S.result.summary.duration_s, 1e-9);
   $('rec-status').textContent = `Recording: ${run.length} states, ${fmtTime(S.rec.duration)} ` +
-    `(simulated ${fmtTime(S.result.summary.duration_s)}, x${ratio.toFixed(2)}). Actual path in red.`;
+    (byLine ? `(simulated ${fmtTime(S.result.summary.duration_s)}, x${ratio.toFixed(2)}). `
+      : '(no line numbers: the server matches it to the program by path). ') + 'Actual path in red.';
   if (S.server) {
     const res = await (await fetch('api/compare', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gcode: $('gcode').value, setup: $('setup').value, options: S.options, recording: await file.text() }),
+      body: JSON.stringify({ gcode: $('gcode').value, setup: $('setup').value, options: S.options, recording: text }),
     })).json();
     $('cmp-report').textContent = res.error ? `Compare: ${res.error}` : res.text;
     $('cmp-report').classList.remove('hidden');

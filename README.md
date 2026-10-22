@@ -64,7 +64,9 @@ More commands (`python -m umc_twin --help`):
 | `calibrate --nose-to-platter … --mrzp … --b-dir … --c-dir …` | Record measurements from the machine (see below) |
 | `mtconnect-probe URL` | What the twin would read from an MTConnect agent, and how it mapped it |
 | `record --mtconnect URL --out run.jsonl` | Record the machine; replay with `serve --replay-log run.jsonl` |
-| `compare PROG --setup JOB --recording run.jsonl` | Recorded run vs simulation: time, position deviation and spindle load per line |
+| `compare PROG --setup JOB --recording run.jsonl\|run.csv` | Recorded run vs simulation: time, position deviation and spindle load per line |
+| `import-log run.csv --out run.jsonl` | Convert a CSV machine log (the shop logger's columns) to a recording |
+| `check-recording run.csv --setup JOB` | Every logged position against travel limits and collisions |
 | `synth-recording PROG --setup JOB --out fake.jsonl` | A fake run (slower, offset, heavier) to try `compare` without the machine |
 | `check FILES_OR_FOLDERS --setup JOB --html report.html` | Pre-flight a batch of programs; `prog.yaml` next to `prog.nc` is used for that program |
 | `fake-agent --replay PROG --setup JOB` | A fake MTConnect agent serving a simulated run, for testing without the machine |
@@ -197,6 +199,21 @@ time from that), how far it strayed from the simulated path (a wrong offset or c
 and a factor for `material.specific_energy` that makes the predicted spindle load match. The factor is a
 line-averaged fit, good to roughly ±10%. It assumes the control reports program line numbers; if it
 reports N-numbers, the report says no lines matched.
+
+### CSV logs without line numbers
+
+Logs from the shop's CSV logger (`pc_time`, `x_mach` … `c_mach`, `spindle_rpm`, `spindle_load_pct`,
+`tool_in_spindle`, `Execution`, …) work wherever a recording does: `compare`, `check-recording`, and the
+viewer's **Compare a recording**. Positions are read as inches when they all fit inside the travel in inches
+(`--units in|mm` to say so). When the `Line` / `LineNumber` columns are empty, `compare` places the log on the
+simulated path instead: the first sample is matched anywhere in the program (logs can start mid-run), later
+ones only move forward, so repeated laps over the same path stay in order. The report says where the log
+starts and ends in the program and how much of the run it covers. Only the longest unbroken ACTIVE stretch
+is compared; motion after a feed hold or reset is listed and left out. At one sample a second, corners are
+cut short between samples, so judge position deviation on straight runs.
+
+`tests/data/rect_laps.nc` is a stand-in for a logged test cut (a 4 × 3 in rectangle, 0.001 in down per lap,
+F20 then F10), written from the log itself. Against that log it matches the timing to 0.2%.
 
 ## Limitations
 
