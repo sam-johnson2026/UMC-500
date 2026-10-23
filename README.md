@@ -48,11 +48,12 @@ pip install -e ".[collision]"          # numpy, pyyaml, trimesh, python-fcl
 python -m umc_twin simulate examples/demo_5axis.nc --setup examples/setup_demo.yaml --out demo.json \
        --stock-out demo_part.stl
 python -m umc_twin simulate examples/crash_demo.nc --setup examples/setup_demo.yaml
+python -m umc_twin simulate examples/air_test.nc --setup examples/air_test.yaml   # 3-axis air cut, inches
 
 # 3D viewer + simulation API on http://127.0.0.1:8000
 python -m umc_twin serve
 
-pytest                                  # 99 tests
+pytest                                  # 106 tests
 ```
 
 More commands (`python -m umc_twin --help`):
@@ -212,7 +213,7 @@ starts and ends in the program and how much of the run it covers. Only the longe
 is compared; motion after a feed hold or reset is listed and left out. At one sample a second, corners are
 cut short between samples, so judge position deviation on straight runs.
 
-`tests/data/rect_laps.nc` is a stand-in for a logged test cut (a 4 × 3 in rectangle, 0.001 in down per lap,
+`tests/data/rect_laps.nc` is a stand-in for a logged air cut (a 4 × 3 in rectangle, 0.001 in down per lap,
 F20 then F10), written from the log itself. Against that log it matches the timing to 0.2%.
 
 ## Limitations

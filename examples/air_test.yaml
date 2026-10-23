@@ -1,0 +1,7 @@
+# Job setup for air_test.nc: the G54 and T1 the logged rectangle run used (no stock: an air cut).
+# Replace the tool size and G54 with the values from your control before trusting the clearances.
+units: in
+tools:
+  1: {name: "1/2 endmill", type: flat, length: 4.0, diameter: 0.5}
+work_offsets:
+  G54: {X: -8.3018, Y: -6.4479, Z: -8.648}
