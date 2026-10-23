@@ -65,3 +65,16 @@ def test_crash_demo_catches_each_mistake():
     assert (9, "rapid_into_material") in cutting                  # 1: G00 plunge (cutting sim)
     assert any(c["b"] == "platter_tslot" for c in r["collisions"])  # 2: head into tilted platter
     assert any(lim["message"].startswith("X=") for lim in r["limits"])  # 3: over-travel
+
+
+def test_missing_fcl_skips_with_a_note(monkeypatch):
+    import umc_twin.collision as col
+    from umc_twin import Kinematics, load_machine
+    from umc_twin.job import default_setup
+    from umc_twin.sim import format_report, run_job
+
+    monkeypatch.setattr(col, "available", lambda: False)
+    m = load_machine()
+    r = run_job("G21 G90\nG0 X-100. Y-100.\nM30", m, default_setup(Kinematics(m)))
+    assert r["collision_checked"] is False and "python-fcl" in r["collision_note"]
+    assert "python-fcl" in format_report(r)

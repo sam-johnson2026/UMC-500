@@ -66,6 +66,19 @@ def stock_mesh(solid: Solid) -> trimesh.Trimesh:
     return solid.mesh.copy()
 
 
+MISSING_FCL = ("not checked: python-fcl isn't installed (it has no build for every Python version; "
+               "Python 3.10-3.12 is the safe choice)")
+
+
+def available() -> bool:
+    """Whether python-fcl (needed for collision checks) can be imported."""
+    try:
+        import fcl  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 class CollisionChecker:
     def __init__(self, machine: Machine, kin: Kinematics, setup: JobSetup | None = None,
                  extra_ignore: set[frozenset] | None = None):

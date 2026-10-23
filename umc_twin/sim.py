@@ -138,6 +138,11 @@ def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None =
         for d in servo["per_line"] if d["max_contour_mm"] > tol][:20]
 
     collisions = []
+    collision_note = None
+    if check_collisions:
+        from .collision import MISSING_FCL, available
+        if not available():
+            check_collisions, collision_note = False, MISSING_FCL
     if check_collisions:
         from .collision import CollisionChecker
 
@@ -164,6 +169,7 @@ def run_job(gcode: str, machine: Machine | None = None, setup: JobSetup | None =
         "limits": limit_violations(traj, kin),
         "collisions": collisions,
         "collision_checked": check_collisions,
+        "collision_note": collision_note,
         "setup": {
             "tools": {n: tool_payload(t) for n, t in setup.tools.items()},
             "default_tool": tool_payload(setup.default_tool),
@@ -219,7 +225,7 @@ def format_report(result: dict) -> str:
     for key, title in (("limits", "travel limits"), ("collisions", "collisions"), ("warnings", "warnings")):
         items = result[key]
         if key == "collisions" and not result["collision_checked"]:
-            lines.append("collisions   not checked")
+            lines.append(f"collisions   {result.get('collision_note') or 'not checked'}")
             continue
         lines.append(f"{title:12s} {len(items) or 'none'}")
         for it in items[:20]:

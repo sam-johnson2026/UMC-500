@@ -544,7 +544,7 @@ function renderIssues(r) {
   ].sort((a, b) => (a.t ?? 1e9) - (b.t ?? 1e9));
   ul.innerHTML = '';
   if (!items.length) {
-    ul.innerHTML = `<li class="none">No collisions, over-travel, cutting issues or warnings${r.collision_checked === false ? ' (collision check off)' : ''}</li>`;
+    ul.innerHTML = `<li class="none">No collisions, over-travel, cutting issues or warnings${r.collision_checked === false ? ` (collisions ${r.collision_note || 'not checked'})` : ''}</li>`;
     return;
   }
   for (const it of items) {

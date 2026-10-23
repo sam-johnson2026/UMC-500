@@ -138,7 +138,11 @@ def cmd_pose(args):
     print("tip (world) ", np.round(kin.tool_tip_world(q, tool.length), 3).tolist())
     print("tip (table) ", np.round(kin.tool_tip_in_table(q, tool.length), 3).tolist())
     print("limits      ", kin.limit_violations(q) or "ok")
-    if not args.no_collisions:
+    from .collision import MISSING_FCL, available
+
+    if not args.no_collisions and not available():
+        print("collisions  ", MISSING_FCL)
+    elif not args.no_collisions:
         from .collision import CollisionChecker
 
         hits = CollisionChecker(machine, kin, setup).check_pose(q, tool=args.tool)
@@ -284,8 +288,10 @@ def cmd_check_recording(args):
 
     machine, kin, setup = _machine_and_setup(args)
     states = load_recording(args.recording, args.units)
+    from .collision import MISSING_FCL, available
+
     checker = None
-    if not args.no_collisions:
+    if not args.no_collisions and available():
         from .collision import CollisionChecker
 
         checker = CollisionChecker(machine, kin, setup)
@@ -316,7 +322,7 @@ def cmd_check_recording(args):
     for st, msg in limit_hits:
         print(f"  t={st['timestamp'] - t0:7.1f}s  {msg}")
     if checker is None:
-        print("collisions   not checked")
+        print(f"collisions   {'not checked' if args.no_collisions else MISSING_FCL}")
     else:
         tools = {s.get('tool') for s in states} - {None}
         missing = [t for t in tools if t not in setup.tools]

@@ -10,7 +10,7 @@ requires-python = ">=3.10"
 dependencies = ["numpy>=1.24", "pyyaml>=6", "trimesh>=4", "scipy>=1.10"]
 
 [project.optional-dependencies]
-collision = ["python-fcl>=0.7"]
+collision = ["python-fcl>=0.7; python_version < '3.13'"]   # no python-fcl builds for newer Pythons yet
 cad = ["cadquery-ocp>=7.7"]           # only for tools/build_assets.py (re-tessellating the STEP)
 dev = ["pytest>=7", "python-fcl>=0.7"]
 
